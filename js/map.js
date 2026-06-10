@@ -141,6 +141,50 @@ export class GameMap {
       }
       this.grid.push(row);
     }
+
+    // ---- Vault windows: placed on selected LOW walls so runners can break
+    //      line of sight by vaulting through; oni vaults slower (DbD pallet/window feel). ----
+    // Each vault = a world-space segment with an axis + interact point.
+    this.vaults = [];
+    const vaultCells = [
+      { cx: 15, cz: 7, axis: 'h' }, { cx: 16, cz: 7, axis: 'h' },
+      { cx: 15, cz: 24, axis: 'h' }, { cx: 16, cz: 24, axis: 'h' },
+      { cx: 7, cz: 15, axis: 'v' }, { cx: 7, cz: 16, axis: 'v' },
+      { cx: 24, cz: 15, axis: 'v' }, { cx: 24, cz: 16, axis: 'v' },
+    ];
+    for (const vc of vaultCells) {
+      // only convert if the cell is a LOW wall (vault-able)
+      if (this.cells[vc.cz] && this.cells[vc.cz][vc.cx] === LOW) {
+        const w = cellToWorld(vc.cx, vc.cz);
+        this.vaults.push({ x: w.x, z: w.z, axis: vc.axis });
+      }
+    }
+
+    // ---- Generators (escape task): repairing all opens the escape gate.
+    //      Deterministic positions spread across the field. ----
+    this.generators = [];
+    const genSpots = [
+      cellToWorld(7, 7), cellToWorld(24, 7), cellToWorld(7, 24),
+      cellToWorld(24, 24), cellToWorld(15, 15.5),
+    ];
+    // nudge to nearest walkable
+    for (let i = 0; i < 5; i++) {
+      let spot = genSpots[i];
+      let { cx, cz } = worldToCell(spot.x, spot.z);
+      if (this.isBlocked(cx, cz)) {
+        let found = null, bd = Infinity;
+        for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+          const gx = cx + dx, gz = cz + dz;
+          if (!this.isBlocked(gx, gz)) { const d = dx * dx + dz * dz; if (d < bd) { bd = d; found = { cx: gx, cz: gz }; } }
+        }
+        if (found) spot = cellToWorld(found.cx, found.cz);
+      }
+      // keep away from exact jail center
+      if (spot.x * spot.x + spot.z * spot.z < 9) spot = cellToWorld(cx + 3, cz);
+      this.generators.push({ id: 'gen' + i, x: spot.x, z: spot.z, progress: 0, done: false });
+    }
+    // escape gate location (north perimeter mid)
+    this.gate = { x: 0, z: -WORLD_H / 2 + 1.2, open: false };
   }
 
   isBlocked(cx, cz) {
@@ -554,8 +598,104 @@ export class GameMap {
     group.add(this.fireflies);
     this._ffBase = ffPos.slice();
 
+    // --- Vault windows: a wooden frame with a crossbar over the LOW wall ---
+    const vaultFrameMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 0.85 });
+    const vaultGlowMat = new THREE.MeshBasicMaterial({
+      color: 0xffe08a, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    });
+    for (const v of this.vaults) {
+      const vg = new THREE.Group();
+      vg.position.set(v.x, 0, v.z);
+      const horiz = v.axis === 'h';
+      const len = CELL * 0.96;
+      // two posts
+      for (const s of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 0.14), vaultFrameMat);
+        if (horiz) post.position.set(s * len / 2, 0.85, 0);
+        else post.position.set(0, 0.85, s * len / 2);
+        post.castShadow = true;
+        vg.add(post);
+      }
+      // top bar
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(horiz ? len : 0.14, 0.14, horiz ? 0.14 : len), vaultFrameMat);
+      bar.position.y = 1.62;
+      vg.add(bar);
+      // interaction glow plane on the gap
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(horiz ? len : 0.4, 1.2),
+        vaultGlowMat.clone());
+      glow.position.y = 0.85;
+      if (!horiz) glow.rotation.y = Math.PI / 2;
+      vg.add(glow);
+      v.glow = glow.material;
+      // prompt sprite (✋) hidden by default
+      group.add(vg);
+    }
+
+    // --- Generators: a humming machine with a status light + progress ring ---
+    this.generators.forEach((gen) => {
+      const gg = new THREE.Group();
+      gg.position.set(gen.x, 0, gen.z);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.1, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.7, metalness: 0.4 }));
+      body.position.y = 0.55; body.castShadow = true; gg.add(body);
+      // pistons on top
+      for (const s of [-0.25, 0.25]) {
+        const pis = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.45, 8),
+          new THREE.MeshStandardMaterial({ color: 0x888f9a, roughness: 0.4, metalness: 0.7 }));
+        pis.position.set(s, 1.25, 0); gg.add(pis);
+        gen._pistons = gen._pistons || []; gen._pistons.push(pis);
+      }
+      // status light (red→green)
+      const light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10),
+        new THREE.MeshStandardMaterial({ color: 0xff3322, emissive: 0xff2200, emissiveIntensity: 1.5 }));
+      light.position.set(0, 1.0, 0.45); gg.add(light);
+      gen._lightMesh = light;
+      const pl = new THREE.PointLight(0xff3322, 2.2, 5, 2); pl.position.set(0, 1.2, 0.5); gg.add(pl); gen._pl = pl;
+      // progress ring on ground
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 32, 1, 0, 0.001),
+        new THREE.MeshBasicMaterial({ color: 0x66ff99, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05; gg.add(ring);
+      gen._ring = ring;
+      group.add(gg);
+      gen._group = gg;
+    });
+
+    // --- Escape gate (north): heavy doors that slide open when all gens done ---
+    const gateGroup = new THREE.Group();
+    gateGroup.position.set(this.gate.x, 0, this.gate.z);
+    const gateMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.8, metalness: 0.3 });
+    this.gateDoors = [];
+    for (const s of [-1, 1]) {
+      const door = new THREE.Mesh(new THREE.BoxGeometry(2.2, 3.0, 0.3), gateMat);
+      door.position.set(s * 1.1, 1.5, 0); door.castShadow = true;
+      gateGroup.add(door);
+      this.gateDoors.push({ mesh: door, baseX: s * 1.1, dir: s });
+    }
+    // gate posts
+    for (const s of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 3.6, 8),
+        new THREE.MeshStandardMaterial({ color: 0x33373f, roughness: 0.6, metalness: 0.6 }));
+      post.position.set(s * 2.3, 1.8, 0); gateGroup.add(post);
+    }
+    // glowing exit marker (hidden until open)
+    const exitGlow = new THREE.Mesh(new THREE.PlaneGeometry(4, 3),
+      new THREE.MeshBasicMaterial({ color: 0x66ffaa, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    exitGlow.position.y = 1.5; gateGroup.add(exitGlow);
+    this.gateGlowMat = exitGlow.material;
+    group.add(gateGroup);
+    this.gateGroup = gateGroup;
+
     scene.add(group);
     return group;
+  }
+
+  setGateOpen(amount) {
+    // amount 0..1 — slide doors apart
+    if (!this.gateDoors) return;
+    for (const d of this.gateDoors) d.mesh.position.x = d.baseX + d.dir * amount * 2.0;
+    if (this.gateGlowMat) this.gateGlowMat.opacity = amount * 0.4;
   }
 
   update(t) {
@@ -580,6 +720,58 @@ export class GameMap {
       pos.needsUpdate = true;
       this.fireflies.material.opacity = 0.55 + Math.sin(t * 2.2) * 0.25;
     }
+    // vault glow pulse
+    if (this.vaults) {
+      for (const v of this.vaults) {
+        if (v.glow) v.glow.opacity = v._near ? (0.15 + Math.sin(t * 8) * 0.1) : 0;
+      }
+    }
+    // generator visuals (progress ring + light + piston bob)
+    if (this.generators) {
+      for (const gen of this.generators) {
+        if (gen._ring) {
+          const geo = gen._ring.geometry;
+          const frac = Math.max(0.001, gen.progress);
+          // rebuild ring arc cheaply by scaling thetaLength via a fresh geometry only when needed
+          if (gen._lastFrac === undefined || Math.abs(gen._lastFrac - frac) > 0.02 || gen.done !== gen._lastDone) {
+            geo.dispose();
+            gen._ring.geometry = new THREE.RingGeometry(0.9, 1.1, 40, 1, -Math.PI / 2, frac * Math.PI * 2);
+            gen._lastFrac = frac; gen._lastDone = gen.done;
+          }
+          gen._ring.material.color.setHex(gen.done ? 0x66ff99 : 0xffcc55);
+        }
+        if (gen._lightMesh) {
+          const m = gen._lightMesh.material;
+          if (gen.done) { m.color.setHex(0x44ff66); m.emissive.setHex(0x22ff44); if (gen._pl) gen._pl.color.setHex(0x44ff66); }
+          else { const blink = 0.6 + Math.sin(t * 6) * 0.4; m.emissiveIntensity = 0.8 + blink; }
+        }
+        if (gen._pistons && gen.progress > 0 && !gen.done) {
+          gen._pistons.forEach((pis, i) => { pis.position.y = 1.25 + Math.sin(t * 9 + i * Math.PI) * 0.08; });
+        }
+      }
+    }
+  }
+
+  // nearest vault within radius of a point; returns {vault, d} or null
+  nearestVault(x, z, radius) {
+    if (!this.vaults) return null;
+    let best = null, bd = radius * radius;
+    for (const v of this.vaults) {
+      const d = (v.x - x) ** 2 + (v.z - z) ** 2;
+      if (d < bd) { bd = d; best = v; }
+    }
+    return best ? { vault: best, d: Math.sqrt(bd) } : null;
+  }
+
+  nearestGenerator(x, z, radius) {
+    if (!this.generators) return null;
+    let best = null, bd = radius * radius;
+    for (const gen of this.generators) {
+      if (gen.done) continue;
+      const d = (gen.x - x) ** 2 + (gen.z - z) ** 2;
+      if (d < bd) { bd = d; best = gen; }
+    }
+    return best ? { gen: best, d: Math.sqrt(bd) } : null;
   }
 
   // ----- A* pathfinding on grid -----

@@ -60,6 +60,19 @@ export const CONFIG = {
   ENDGAME_TIME: 45,         // final N seconds: oni sees all runners pulse on minimap
   ENDGAME_PING_INTERVAL: 6, // seconds between endgame pings
 
+  // --- Escape task (generators + gate) ---
+  GEN_COUNT: 5,
+  GEN_REQUIRED: 3,          // repair this many to open the escape gate
+  GEN_REPAIR_RADIUS: 1.6,   // distance to repair
+  GEN_REPAIR_TIME: 14,      // seconds of solo repair to finish one gen
+  GEN_REGRESS: 4,           // progress lost per second when nobody works it (after partial)
+  GATE_RADIUS: 2.2,         // distance to escape through gate
+  ESCAPE_SCORE: 200,
+
+  // --- Stealth (crouch) ---
+  CROUCH_SPEED_FACTOR: 0.45,
+  CROUCH_DETECT_FACTOR: 0.4,// reduces oni minimap reveal range while crouched
+
   // --- Misc ---
   CAPTURE_SCORE: 100,
   RESCUE_SCORE: 80,
