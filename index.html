@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>人狼鬼ごっこ - Werewolf Tag 3D</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👹</text></svg>">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+<!-- ============ TITLE SCREEN ============ -->
+<div id="screen-title" class="screen active">
+  <div class="title-bg"></div>
+  <div class="title-content">
+    <h1 class="game-title"><span class="t-red">人狼</span><span class="t-white">鬼ごっこ</span></h1>
+    <p class="game-subtitle">WEREWOLF TAG 3D</p>
+    <div class="title-menu">
+      <input id="input-name" type="text" maxlength="10" placeholder="ニックネーム" autocomplete="off">
+      <button id="btn-solo" class="btn btn-big btn-red">ひとりで遊ぶ <span class="btn-sub">(VS AIボット)</span></button>
+      <button id="btn-create" class="btn btn-big btn-blue">ルームを作る <span class="btn-sub">(友達を招待)</span></button>
+      <div class="join-row">
+        <input id="input-room" type="text" maxlength="6" placeholder="ルームコード" autocomplete="off">
+        <button id="btn-join" class="btn btn-green">参加</button>
+      </div>
+      <button id="btn-howto" class="btn btn-ghost">あそびかた</button>
+    </div>
+    <p class="title-footer">5人対戦: 👹人狼×1 ・ 🃏裏切り者×1 ・ 🏃逃げ×3</p>
+  </div>
+</div>
+
+<!-- ============ HOW TO PLAY ============ -->
+<div id="screen-howto" class="screen">
+  <div class="panel panel-scroll">
+    <h2>あそびかた</h2>
+    <div class="howto-grid">
+      <div class="howto-card role-oni">
+        <h3>👹 人狼（鬼）</h3>
+        <p>制限時間内に逃げを<b>全員捕まえる</b>と勝利。足が速い。開始20秒は動けない。<br>アイテム: 探知機・トラップ</p>
+      </div>
+      <div class="howto-card role-runner">
+        <h3>🏃 逃げ</h3>
+        <p>時間切れまで<b>1人でも生き残れば</b>勝利。捕まると牢屋へ。仲間が牢屋に触れると救出できる！<br>アイテム: 加速ブーツ・閃光・壁</p>
+      </div>
+      <div class="howto-card role-traitor">
+        <h3>🃏 裏切り者</h3>
+        <p>見た目は逃げ、<b>中身は人狼の味方</b>。捕まらないが、人狼が全逃げを捕まえれば勝利。シグナルで逃げの位置を人狼に密告できる。</p>
+      </div>
+      <div class="howto-card">
+        <h3>🎮 操作</h3>
+        <p><b>PC:</b> WASD移動 / マウスドラッグ視点 / Shiftダッシュ / E or クリックでアイテム使用<br><b>スマホ:</b> 左スティック移動 / 右側スワイプ視点 / ボタンでアイテム</p>
+      </div>
+    </div>
+    <button id="btn-howto-back" class="btn btn-blue">もどる</button>
+  </div>
+</div>
+
+<!-- ============ LOBBY ============ -->
+<div id="screen-lobby" class="screen">
+  <div class="panel">
+    <h2>ロビー</h2>
+    <div class="room-code-box">
+      ルームコード: <span id="lobby-code" class="room-code">------</span>
+      <button id="btn-copy-link" class="btn btn-small btn-green">招待リンクをコピー</button>
+    </div>
+    <div id="lobby-players" class="lobby-players"></div>
+    <p class="lobby-hint">空き枠はAIボットが入ります</p>
+    <div class="lobby-actions">
+      <button id="btn-start" class="btn btn-big btn-red">ゲーム開始</button>
+      <button id="btn-leave" class="btn btn-ghost">退出</button>
+    </div>
+    <p id="lobby-status" class="lobby-status"></p>
+  </div>
+</div>
+
+<!-- ============ GAME ============ -->
+<div id="screen-game" class="screen">
+  <canvas id="game-canvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="hud-top">
+      <div id="hud-role" class="hud-box"></div>
+      <div id="hud-timer" class="hud-box">5:00</div>
+      <div id="hud-runners" class="hud-box"></div>
+    </div>
+    <canvas id="minimap" width="160" height="160"></canvas>
+    <div id="hud-item" class="hud-box hud-item-box">
+      <span id="item-icon">—</span>
+      <span id="item-name">アイテムなし</span>
+    </div>
+    <div id="hud-message"></div>
+    <div id="hud-announce"></div>
+    <div id="freeze-overlay" class="hidden">
+      <div class="freeze-text">行動不能<br><span id="freeze-count">20</span></div>
+    </div>
+    <div id="flash-overlay"></div>
+    <div id="captured-overlay" class="hidden">
+      <div class="captured-text">捕まった！<br><span class="captured-sub">仲間の救出を待とう…</span></div>
+    </div>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="touch-ui">
+    <div id="joystick-zone">
+      <div id="joystick-base"><div id="joystick-knob"></div></div>
+    </div>
+    <div id="touch-buttons">
+      <button id="btn-item" class="touch-btn">🎁</button>
+      <button id="btn-dash" class="touch-btn">💨</button>
+      <button id="btn-signal" class="touch-btn hidden">📡</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ RESULT ============ -->
+<div id="screen-result" class="screen">
+  <div class="panel">
+    <h2 id="result-title">勝利！</h2>
+    <p id="result-desc"></p>
+    <div id="result-players" class="lobby-players"></div>
+    <div class="lobby-actions">
+      <button id="btn-again" class="btn btn-big btn-red">もう一度</button>
+      <button id="btn-to-title" class="btn btn-ghost">タイトルへ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rotate device prompt -->
+<div id="rotate-prompt"><div>📱 横画面にしてください<br><span style="font-size:14px">Please rotate your device</span></div></div>
+
+<div id="loading-overlay" class="hidden"><div class="spinner"></div><p id="loading-text">接続中…</p></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
