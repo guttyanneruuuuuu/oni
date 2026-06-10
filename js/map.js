@@ -14,8 +14,8 @@ export const WORLD_W = GRID_W * CELL;   // 64
 export const WORLD_H = GRID_H * CELL;   // 64
 
 // Cell types
-const FLOOR = 0, PERIM = 1, BRICK = 2, CRATE = 3, TREE = 4, ROCK = 5;
-const BLOCKING = new Set([PERIM, BRICK, CRATE, TREE, ROCK]);
+const FLOOR = 0, PERIM = 1, BRICK = 2, CRATE = 3, TREE = 4, ROCK = 5, LOW = 6, FENCE = 7;
+const BLOCKING = new Set([PERIM, BRICK, CRATE, TREE, ROCK, LOW, FENCE]);
 
 export function cellToWorld(cx, cz) {
   return { x: (cx - GRID_W / 2 + 0.5) * CELL, z: (cz - GRID_H / 2 + 0.5) * CELL };
@@ -82,16 +82,22 @@ export class GameMap {
     // SE barn 7x6, doors north + west
     this.buildings.push(building(20, 20, 8, 7, [[23, 20], [24, 20], [20, 23]]));
 
-    // Central ruin: broken L-walls around jail (plaza)
-    g[13][13] = BRICK; g[13][14] = BRICK; g[13][17] = BRICK; g[13][18] = BRICK;
-    g[18][13] = BRICK; g[18][14] = BRICK; g[18][17] = BRICK; g[18][18] = BRICK;
-    g[14][13] = BRICK; g[17][13] = BRICK; g[14][18] = BRICK; g[17][18] = BRICK;
+    // Central ruin: broken L-walls around jail (plaza) — mix of full & low
+    g[13][13] = BRICK; g[13][14] = LOW;  g[13][17] = LOW;  g[13][18] = BRICK;
+    g[18][13] = BRICK; g[18][14] = LOW;  g[18][17] = LOW;  g[18][18] = BRICK;
+    g[14][13] = LOW;  g[17][13] = BRICK; g[14][18] = BRICK; g[17][18] = LOW;
 
-    // Mid-field cover walls (short segments, not maze-like)
-    setRect(13, 7, 6, 1, BRICK);   // north wall segment
-    setRect(13, 24, 6, 1, BRICK);  // south wall segment
-    setRect(7, 13, 1, 6, BRICK);   // west
-    setRect(24, 13, 1, 6, BRICK);  // east
+    // Mid-field cover: LOW walls you can see over (less maze, more cover)
+    setRect(13, 7, 6, 1, LOW);    // north low wall
+    setRect(13, 24, 6, 1, LOW);   // south low wall
+    setRect(7, 13, 1, 6, LOW);    // west
+    setRect(24, 13, 1, 6, LOW);   // east
+
+    // Broken fences for atmosphere (blocking but see-through)
+    setRect(3, 15, 3, 1, FENCE);  // west fence stub
+    setRect(26, 15, 3, 1, FENCE); // east fence stub
+    setRect(15, 3, 1, 2, FENCE);  // north stub
+    setRect(15, 27, 1, 2, FENCE); // south stub
 
     // Jail at exact center
     const jc = cellToWorld(15, 15); // will offset to true center below
@@ -142,6 +148,13 @@ export class GameMap {
     return this.grid[cz][cx] === 1;
   }
 
+  // tall obstacles only (LOW walls & fences can be seen over at eye height)
+  blocksSight(cx, cz) {
+    if (cx < 0 || cz < 0 || cx >= GRID_W || cz >= GRID_H) return true;
+    const c = this.cells[cz][cx];
+    return c === PERIM || c === BRICK || c === TREE;
+  }
+
   // Circle-vs-grid collision: returns corrected position
   collide(x, z, radius) {
     const { cx, cz } = worldToCell(x, z);
@@ -174,7 +187,7 @@ export class GameMap {
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
       const { cx, cz } = worldToCell(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t);
-      if (this.isBlocked(cx, cz)) return false;
+      if (this.blocksSight(cx, cz)) return false;
     }
     return true;
   }
@@ -252,31 +265,37 @@ export class GameMap {
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x55585f, roughness: 0.98, flatShading: true });
 
     // --- Instanced walls (perimeter & bricks) and crates ---
-    let perimCount = 0, brickCount = 0, crateCount = 0;
-    const treeCells = [], rockCells = [];
+    let perimCount = 0, brickCount = 0, crateCount = 0, lowCount = 0;
+    const treeCells = [], rockCells = [], fenceCells = [];
     for (let z = 0; z < GRID_H; z++) for (let x = 0; x < GRID_W; x++) {
       const c = this.cells[z][x];
       if (c === PERIM) perimCount++;
       else if (c === BRICK) brickCount++;
       else if (c === CRATE) crateCount++;
+      else if (c === LOW) lowCount++;
       else if (c === TREE) treeCells.push({ x, z });
       else if (c === ROCK) rockCells.push({ x, z });
+      else if (c === FENCE) fenceCells.push({ x, z });
     }
 
     const perimGeo = new THREE.BoxGeometry(CELL, 4.6, CELL);
     const brickGeo = new THREE.BoxGeometry(CELL, 3.4, CELL);
+    const lowGeo = new THREE.BoxGeometry(CELL, 1.15, CELL);
     const crateGeo = new THREE.BoxGeometry(CELL * 0.88, 1.5, CELL * 0.88);
     const perimMesh = new THREE.InstancedMesh(perimGeo, stoneMat, perimCount);
     const brickMesh = new THREE.InstancedMesh(brickGeo, brickMat, brickCount);
+    const lowMesh = new THREE.InstancedMesh(lowGeo, brickMat, lowCount);
     const crateMesh = new THREE.InstancedMesh(crateGeo, woodMat, crateCount);
     perimMesh.castShadow = perimMesh.receiveShadow = true;
     brickMesh.castShadow = brickMesh.receiveShadow = true;
+    lowMesh.castShadow = lowMesh.receiveShadow = true;
     crateMesh.castShadow = crateMesh.receiveShadow = true;
 
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
-    let pi = 0, bi = 0, ci = 0;
+    const vs = new THREE.Vector3();
+    let pi = 0, bi = 0, ci = 0, li = 0;
     for (let z = 0; z < GRID_H; z++) for (let x = 0; x < GRID_W; x++) {
       const c = this.cells[z][x];
       const w = cellToWorld(x, z);
@@ -284,8 +303,18 @@ export class GameMap {
         m.makeTranslation(w.x, 2.3, w.z);
         perimMesh.setMatrixAt(pi++, m);
       } else if (c === BRICK) {
-        m.makeTranslation(w.x, 1.7, w.z);
+        // slightly varied heights for ruined-wall feel
+        const hs = 0.82 + rnd() * 0.26;
+        q.identity();
+        vs.set(1, hs, 1);
+        m.compose(new THREE.Vector3(w.x, 1.7 * hs, w.z), q, vs);
         brickMesh.setMatrixAt(bi++, m);
+      } else if (c === LOW) {
+        const hs = 0.85 + rnd() * 0.3;
+        q.identity();
+        vs.set(1, hs, 1);
+        m.compose(new THREE.Vector3(w.x, 0.575 * hs, w.z), q, vs);
+        lowMesh.setMatrixAt(li++, m);
       } else if (c === CRATE) {
         e.set(0, (rnd() - 0.5) * 0.5, 0);
         q.setFromEuler(e);
@@ -293,7 +322,34 @@ export class GameMap {
         crateMesh.setMatrixAt(ci++, m);
       }
     }
-    group.add(perimMesh, brickMesh, crateMesh);
+    group.add(perimMesh, brickMesh, lowMesh, crateMesh);
+
+    // --- Broken wooden fences ---
+    const fencePostMat = new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 0.95 });
+    for (const f of fenceCells) {
+      const w = cellToWorld(f.x, f.z);
+      const fence = new THREE.Group();
+      // horizontal? check neighbor cells in row
+      const horiz = (this.cells[f.z][f.x - 1] === FENCE || this.cells[f.z][f.x + 1] === FENCE);
+      for (let k = -1; k <= 1; k++) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0 + rnd() * 0.25, 0.12), fencePostMat);
+        if (horiz) post.position.set(k * 0.8, 0.5, 0);
+        else post.position.set(0, 0.5, k * 0.8);
+        post.rotation.z = (rnd() - 0.5) * 0.12;
+        post.castShadow = true;
+        fence.add(post);
+      }
+      for (let r = 0; r < 2; r++) {
+        if (rnd() < 0.25) continue; // missing planks = broken look
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(horiz ? CELL : 0.09, 0.13, horiz ? 0.09 : CELL), fencePostMat);
+        rail.position.y = 0.42 + r * 0.4;
+        rail.rotation[horiz ? 'z' : 'x'] = (rnd() - 0.5) * 0.08;
+        rail.castShadow = true;
+        fence.add(rail);
+      }
+      fence.position.set(w.x, 0, w.z);
+      group.add(fence);
+    }
 
     // --- Building roofs ---
     for (const b of this.buildings) {
@@ -421,6 +477,68 @@ export class GameMap {
       const pl = new THREE.PointLight(0xffbb66, 16, 17, 1.9);
       pl.position.set(lx + 0.8, 4.2, lz);
       group.add(pl);
+      // volumetric-ish light cone (additive, fades to nothing at ground)
+      const coneGeo = new THREE.ConeGeometry(2.4, 4.2, 20, 1, true);
+      const coneMat = new THREE.MeshBasicMaterial({
+        color: 0xffcf8a, transparent: true, opacity: 0.07,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        depthWrite: false, fog: false,
+      });
+      const cone = new THREE.Mesh(coneGeo, coneMat);
+      cone.position.set(lx + 0.8, 2.2, lz);
+      group.add(cone);
+      // light pool decal on ground
+      const pool = new THREE.Mesh(
+        new THREE.CircleGeometry(2.6, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0xffb35e, transparent: true, opacity: 0.10,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        })
+      );
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(lx + 0.8, 0.03, lz);
+      group.add(pool);
+    }
+
+    // --- Ground mist patches (DbD-style low fog planes) ---
+    const mistMat = new THREE.MeshBasicMaterial({
+      color: 0x8a9bc0, transparent: true, opacity: 0.05,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    });
+    this.mists = [];
+    for (let i = 0; i < 12; i++) {
+      const mp = new THREE.Mesh(new THREE.CircleGeometry(4 + rnd() * 5, 16), mistMat);
+      mp.rotation.x = -Math.PI / 2;
+      mp.position.set((rnd() - 0.5) * WORLD_W * 0.85, 0.35 + rnd() * 0.5, (rnd() - 0.5) * WORLD_H * 0.85);
+      group.add(mp);
+      this.mists.push({ mesh: mp, baseX: mp.position.x, baseZ: mp.position.z, sp: 0.2 + rnd() * 0.4, ph: rnd() * 6 });
+    }
+
+    // --- Scattered ground debris: planks, barrels ---
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x4f3a22, roughness: 0.9 });
+    const barrelBandMat = new THREE.MeshStandardMaterial({ color: 0x35353c, roughness: 0.55, metalness: 0.6 });
+    let bGuard = 0, bPlaced = 0;
+    while (bPlaced < 7 && bGuard++ < 200) {
+      const x = (rnd() - 0.5) * (WORLD_W - 10);
+      const z = (rnd() - 0.5) * (WORLD_H - 10);
+      const { cx, cz } = worldToCell(x, z);
+      if (this.isBlocked(cx, cz)) continue;
+      if (x * x + z * z < 80) continue;
+      const barrel = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.85, 12), barrelMat);
+      body.position.y = 0.42;
+      body.castShadow = true;
+      barrel.add(body);
+      for (const by of [0.18, 0.66]) {
+        const band = new THREE.Mesh(new THREE.TorusGeometry(0.345, 0.025, 6, 16), barrelBandMat);
+        band.rotation.x = Math.PI / 2;
+        band.position.y = by;
+        barrel.add(band);
+      }
+      if (rnd() < 0.3) { barrel.rotation.z = Math.PI / 2; barrel.position.y = 0.34; barrel.rotation.y = rnd() * Math.PI; }
+      barrel.position.x = x; barrel.position.z = z;
+      group.add(barrel);
+      bPlaced++;
     }
 
     // --- Fireflies (ambient particles) ---
@@ -443,6 +561,13 @@ export class GameMap {
   update(t) {
     if (this.jailRing) {
       this.jailRing.material.opacity = 0.32 + Math.sin(t * 3) * 0.14;
+    }
+    if (this.mists) {
+      for (const ms of this.mists) {
+        ms.mesh.position.x = ms.baseX + Math.sin(t * ms.sp + ms.ph) * 2.2;
+        ms.mesh.position.z = ms.baseZ + Math.cos(t * ms.sp * 0.7 + ms.ph) * 1.8;
+        ms.mesh.material.opacity = 0.035 + Math.sin(t * 0.5 + ms.ph) * 0.02 + 0.02;
+      }
     }
     if (this.fireflies) {
       const pos = this.fireflies.geometry.attributes.position;
