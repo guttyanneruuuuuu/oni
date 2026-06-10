@@ -59,7 +59,11 @@
       </div>
       <div class="howto-card">
         <h3>🎮 操作</h3>
-        <p><b>PC:</b> WASD移動 / マウスドラッグ視点 / Shiftダッシュ / E or クリックでアイテム使用<br><b>スマホ:</b> 左スティック移動 / 右側スワイプ視点 / ボタンでアイテム</p>
+        <p><b>PC:</b> WASD移動 / マウスドラッグ視点 / Shiftダッシュ / E:アイテム / Space:攻撃・乗り越え / C:しゃがみ<br><b>スマホ:</b> 左スティック移動 / 右スワイプ視点 / 各ボタンでアクション</p>
+      </div>
+      <div class="howto-card">
+        <h3>⚙️ 発電機と脱出</h3>
+        <p>発電機を<b>3台修理</b>すると北の脱出ゲートが開く！修理中はスキルチェックに成功してスピードUP。ゲートから出れば<b>個人勝利</b>。窓🪟は乗り越えで人狼を撒ける。</p>
       </div>
     </div>
     <button id="btn-howto-back" class="btn btn-blue">もどる</button>
@@ -94,7 +98,15 @@
       <div id="hud-role" class="hud-box"></div>
       <div id="hud-timer" class="hud-box">5:00</div>
       <div id="hud-runners" class="hud-box"></div>
+      <div id="hud-objective" class="hud-box">⚙️ 0/3</div>
     </div>
+    <div id="stamina-bar"><div id="stamina-fill"></div></div>
+    <div id="vault-prompt" class="hud-prompt hidden">🪟 乗り越え可能！</div>
+    <div id="gen-prompt" class="hud-prompt gen hidden">⚙️ 修理中…</div>
+    <div id="skillcheck-wrap" class="hidden">
+      <canvas id="skillcheck" width="180" height="180"></canvas>
+    </div>
+    <div id="killfeed"></div>
     <canvas id="minimap" width="160" height="160"></canvas>
     <div id="hud-item" class="hud-box hud-item-box">
       <span id="item-icon">—</span>
@@ -117,10 +129,14 @@
       <div id="joystick-base"><div id="joystick-knob"></div></div>
     </div>
     <div id="touch-buttons">
+      <button id="btn-attack" class="touch-btn btn-attack hidden">⚔️</button>
+      <button id="btn-vault" class="touch-btn hidden">🪟</button>
+      <button id="btn-crouch" class="touch-btn hidden">🦆</button>
       <button id="btn-item" class="touch-btn">🎁</button>
       <button id="btn-dash" class="touch-btn">💨</button>
       <button id="btn-signal" class="touch-btn hidden">📡</button>
     </div>
+    <button id="btn-pause" class="touch-btn btn-pause">⚙️</button>
   </div>
 </div>
 

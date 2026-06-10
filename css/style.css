@@ -127,6 +127,49 @@ input[type=text]:focus { border-color:#ff3b3b; }
   font-size:clamp(20px,4vw,32px); font-weight:bold; color:#ffd166;
   text-shadow:0 2px 12px #000; text-align:center; opacity:0; transition:opacity .3s; white-space:nowrap;
 }
+#hud-objective { color:#ffd166; }
+#hud-objective.gate-open { color:#66ffaa; animation:pulse-glow 1s ease-in-out infinite; }
+@keyframes pulse-glow { 50% { text-shadow:0 0 12px #66ffaa; } }
+
+#stamina-bar {
+  position:absolute; bottom:max(46px, calc(env(safe-area-inset-bottom) + 34px)); left:50%; transform:translateX(-50%);
+  width:180px; height:7px; background:rgba(255,255,255,.12); border-radius:4px; overflow:hidden;
+  border:1px solid rgba(255,255,255,.18);
+}
+#stamina-fill {
+  height:100%; width:100%; background:linear-gradient(90deg,#3ddc84,#a8ff60);
+  border-radius:4px; transition:width .1s linear;
+}
+#stamina-fill.low { background:linear-gradient(90deg,#e5383b,#ff7b00); }
+
+.hud-prompt {
+  position:absolute; bottom:34%; left:50%; transform:translateX(-50%);
+  background:rgba(10,10,20,.78); border:1px solid #ffd16655; color:#ffd166;
+  padding:7px 16px; border-radius:10px; font-size:14px; font-weight:bold;
+  text-shadow:0 1px 4px #000; white-space:nowrap;
+}
+.hud-prompt.gen { bottom:42%; color:#8fd6ff; border-color:#8fd6ff55; }
+
+#skillcheck-wrap {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-58%);
+  pointer-events:none;
+}
+#killfeed {
+  position:absolute; top:max(54px, calc(env(safe-area-inset-top) + 46px)); left:max(10px, env(safe-area-inset-left));
+  display:flex; flex-direction:column; gap:4px; max-width:46%;
+}
+.kf-row {
+  background:rgba(10,10,20,.66); border-left:3px solid #ffd166; border-radius:6px;
+  padding:4px 10px; font-size:12px; color:#ddd; text-shadow:0 1px 3px #000;
+  animation:kf-in .25s ease-out; opacity:1; transition:opacity .6s;
+}
+.kf-row.fade { opacity:0; }
+.kf-row.cap { border-left-color:#ff4444; }
+.kf-row.resc { border-left-color:#44ffaa; }
+.kf-row.gen { border-left-color:#ffd166; }
+.kf-row.esc { border-left-color:#66ffee; }
+@keyframes kf-in { from { transform:translateX(-14px); opacity:0; } }
+
 #freeze-overlay {
   position:absolute; inset:0; background:rgba(40,0,0,.45);
   display:flex; align-items:center; justify-content:center;
@@ -169,6 +212,18 @@ body.is-touch #touch-ui { display:block; }
 }
 .touch-btn:active { background:rgba(255,255,255,.35); }
 #btn-dash.active { background:rgba(255,200,60,.45); border-color:#ffd166; }
+#btn-crouch.active { background:rgba(120,200,255,.4); border-color:#7ecbff; }
+.btn-attack {
+  width:76px; height:76px; font-size:30px;
+  background:rgba(229,56,59,.28); border-color:rgba(255,90,90,.6);
+}
+.btn-attack:active { background:rgba(229,56,59,.55); }
+.btn-attack.cooldown { opacity:.4; }
+.btn-pause {
+  position:absolute; top:max(8px, env(safe-area-inset-top)); left:max(10px, env(safe-area-inset-left));
+  width:42px; height:42px; font-size:18px; pointer-events:auto;
+  background:rgba(255,255,255,.08);
+}
 
 /* ===== Result ===== */
 #result-title { font-size:34px; }
@@ -208,4 +263,23 @@ body.is-touch #touch-ui { display:block; }
   #minimap { width:100px; height:100px; }
   .player-row { padding:5px 12px; font-size:13px; }
   .lobby-hint { margin-bottom:6px; }
+  .touch-btn { width:54px; height:54px; font-size:22px; }
+  .btn-attack { width:66px; height:66px; font-size:26px; }
+  #hud-top { gap:6px; }
+  .hud-box { padding:4px 10px; font-size:13px; }
+  #hud-timer { font-size:17px; min-width:64px; }
+  #stamina-bar { width:140px; }
 }
+
+/* ===== Pause / Settings menu ===== */
+#pause-menu {
+  position:fixed; inset:0; z-index:50; background:rgba(4,4,10,.82);
+  display:flex; align-items:center; justify-content:center;
+}
+#pause-menu .panel { max-width:380px; }
+.setting-row {
+  display:flex; align-items:center; gap:12px; margin:12px 0; text-align:left; font-size:14px;
+}
+.setting-row label { flex:1; color:#ccc; }
+.setting-row input[type=range] { flex:1.4; accent-color:#ff3b3b; }
+.setting-row .val { width:36px; text-align:right; color:#ffd166; font-family:monospace; }

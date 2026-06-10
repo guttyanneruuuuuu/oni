@@ -288,6 +288,7 @@ $('btn-copy-link').addEventListener('click', async () => {
 
 // Auto-join from invite link (?room=XXXX)
 const params = new URLSearchParams(location.search);
+if (params.get('solo') === '1') setTimeout(() => startSolo(), 200); // debug/test quick start
 const roomParam = params.get('room');
 if (roomParam) {
   $('input-room').value = roomParam.toUpperCase();
