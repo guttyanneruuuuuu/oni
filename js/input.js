@@ -8,7 +8,12 @@ export class Input {
     this.dash = false;
     this.useItem = false;                 // edge-triggered
     this.signal = false;
+    this.attack = false;                  // edge-triggered
+    this.vault = false;                   // edge-triggered
+    this.crouch = false;                  // held / toggled
+    this.lookSens = 1.0;                  // user-adjustable sensitivity
     this.keys = {};
+    try { const s = parseFloat(localStorage.getItem('wtag_sens')); if (s > 0) this.lookSens = s; } catch (e) {}
     this.touch = isTouchDevice();
     this._setupKeyboard();
     this._setupMouse();
@@ -23,6 +28,9 @@ export class Input {
       this.keys[e.code] = true;
       if (e.code === 'KeyE') this.useItem = true;
       if (e.code === 'KeyQ') this.signal = true;
+      if (e.code === 'Space') { this.attack = true; this.vault = true; e.preventDefault(); }
+      if (e.code === 'KeyF') this.vault = true;
+      if (e.code === 'KeyC') this.crouch = !this.crouch;
     });
     window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     window.addEventListener('blur', () => { this.keys = {}; });
@@ -40,14 +48,16 @@ export class Input {
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - lx, dy = e.clientY - ly;
-      this.lookDX += dx * 0.0042;
-      this.lookDY += dy * 0.0032;
+      this.lookDX += dx * 0.0042 * this.lookSens;
+      this.lookDY += dy * 0.0032 * this.lookSens;
       this._mouseMoved += Math.abs(dx) + Math.abs(dy);
       lx = e.clientX; ly = e.clientY;
     });
     window.addEventListener('mouseup', () => {
       if (dragging && this._mouseMoved < 6 && performance.now() - this._mouseDownTime < 300) {
-        this.useItem = true; // click = use item
+        // click = attack (oni) / use item (hiders) — game decides via both flags
+        this.attack = true;
+        this.useItem = true;
       }
       dragging = false;
     });
@@ -133,8 +143,8 @@ export class Input {
     canvas.addEventListener('touchmove', (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier !== lookId) continue;
-        this.lookDX += (t.clientX - llx) * 0.0052;
-        this.lookDY += (t.clientY - lly) * 0.0038;
+        this.lookDX += (t.clientX - llx) * 0.0052 * this.lookSens;
+        this.lookDY += (t.clientY - lly) * 0.0038 * this.lookSens;
         llx = t.clientX; lly = t.clientY;
       }
       e.preventDefault();
@@ -154,6 +164,16 @@ export class Input {
       e.preventDefault();
     }, { passive: false });
     $('btn-signal').addEventListener('touchstart', (e) => { this.signal = true; e.preventDefault(); }, { passive: false });
+    const atkBtn = $('btn-attack');
+    if (atkBtn) atkBtn.addEventListener('touchstart', (e) => { this.attack = true; e.preventDefault(); }, { passive: false });
+    const vBtn = $('btn-vault');
+    if (vBtn) vBtn.addEventListener('touchstart', (e) => { this.vault = true; e.preventDefault(); }, { passive: false });
+    const crBtn = $('btn-crouch');
+    if (crBtn) crBtn.addEventListener('touchstart', (e) => {
+      this.crouch = !this.crouch;
+      crBtn.classList.toggle('active', this.crouch);
+      e.preventDefault();
+    }, { passive: false });
   }
 
   // Call once per frame: returns and clears edge triggers
@@ -173,9 +193,18 @@ export class Input {
       dash: this.dash,
       useItem: this.useItem,
       signal: this.signal,
+      attack: this.attack,
+      vault: this.vault,
+      crouch: this.crouch,
     };
     this.lookDX = 0; this.lookDY = 0;
     this.useItem = false; this.signal = false;
+    this.attack = false; this.vault = false;
     return out;
+  }
+
+  setSensitivity(v) {
+    this.lookSens = Math.max(0.3, Math.min(2.5, v));
+    try { localStorage.setItem('wtag_sens', String(this.lookSens)); } catch (e) {}
   }
 }

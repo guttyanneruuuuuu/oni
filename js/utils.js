@@ -20,7 +20,7 @@ export function fmtTime(sec) {
 
 export const $ = (id) => document.getElementById(id);
 
-export function show(el, on = true) { el.classList.toggle('hidden', !on); }
+export function show(el, on = true) { if (el) el.classList.toggle('hidden', !on); }
 
 export function switchScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
