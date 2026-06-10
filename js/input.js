@@ -54,21 +54,27 @@ export class Input {
   }
 
   _setupTouch() {
-    // --- Joystick (left zone) ---
+    // --- DYNAMIC Joystick (left zone): base appears where you touch,
+    //     and follows your finger when you drag beyond the radius ---
     const zone = $('joystick-zone');
     const base = $('joystick-base');
     const knob = $('joystick-knob');
     let joyId = null, cx = 0, cy = 0;
     const R = 55;
 
+    const placeBase = () => {
+      const r = zone.getBoundingClientRect();
+      base.style.left = (cx - r.left - 55) + 'px';
+      base.style.top = (cy - r.top - 55) + 'px';
+      base.style.bottom = 'auto';
+    };
+
     zone.addEventListener('touchstart', (e) => {
       for (const t of e.changedTouches) {
         if (joyId !== null) continue;
         joyId = t.identifier;
         cx = t.clientX; cy = t.clientY;
-        base.style.left = (cx - 55) + 'px';
-        base.style.top = (cy - 55) + 'px';
-        base.style.bottom = 'auto';
+        placeBase();
         base.classList.add('show');
       }
       e.preventDefault();
@@ -78,13 +84,24 @@ export class Input {
       for (const t of e.changedTouches) {
         if (t.identifier !== joyId) continue;
         let dx = t.clientX - cx, dy = t.clientY - cy;
-        const d = Math.hypot(dx, dy);
-        if (d > R) { dx = dx / d * R; dy = dy / d * R; }
+        let d = Math.hypot(dx, dy);
+        // dynamic-follow: drag the stick center along when pushed past the rim
+        if (d > R) {
+          const ex = (d - R);
+          cx += dx / d * ex;
+          cy += dy / d * ex;
+          dx = dx / d * R; dy = dy / d * R;
+          d = R;
+          placeBase();
+        }
         knob.style.transform = `translate(${dx}px, ${dy}px)`;
-        this.moveX = dx / R;
-        this.moveZ = dy / R;
+        const dead = 0.10; // dead-zone so tiny jitters don't move you
+        const mag = d / R;
+        const scaled = mag < dead ? 0 : (mag - dead) / (1 - dead);
+        this.moveX = (d > 0 ? dx / d : 0) * scaled;
+        this.moveZ = (d > 0 ? dy / d : 0) * scaled;
         // auto-dash when stick pushed to edge
-        this._joyDash = d > R * 0.92;
+        this._joyDash = mag > 0.92;
       }
       e.preventDefault();
     }, { passive: false });
@@ -116,8 +133,8 @@ export class Input {
     canvas.addEventListener('touchmove', (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier !== lookId) continue;
-        this.lookDX += (t.clientX - llx) * 0.006;
-        this.lookDY += (t.clientY - lly) * 0.004;
+        this.lookDX += (t.clientX - llx) * 0.0052;
+        this.lookDY += (t.clientY - lly) * 0.0038;
         llx = t.clientX; lly = t.clientY;
       }
       e.preventDefault();

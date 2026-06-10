@@ -56,9 +56,10 @@ export class Game {
     this.scene.background = new THREE.Color(0x0d1020);
     this.scene.fog = new THREE.Fog(0x0d1020, 25, 60);
 
-    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 220);
     this.camYaw = 0;
-    this.camPitch = 0.35;
+    this.camPitch = 0;
+    this._bobT = 0;
 
     // Lighting: moonlit night
     const amb = new THREE.AmbientLight(0x445577, 0.7);
@@ -125,8 +126,8 @@ export class Game {
       if (r.isBot && this.isHost) this.bots.push(new Bot(p, this));
     });
     this.local = this.players.find(p => p.id === this.localId);
-    // camera initial yaw faces map center
-    this.camYaw = this.local.yaw + Math.PI;
+    // camera initial yaw = facing direction (first-person)
+    this.camYaw = this.local.yaw;
   }
 
   makeNameTag(name, color) {
@@ -462,8 +463,8 @@ export class Game {
     const c = this.map.collide(nx, nz, CONFIG.PLAYER_RADIUS);
     p.x = c.x; p.z = c.z;
     p.speed = mag * speed;
-    if (mag > 0.05 && !p.isBot) p.yaw = Math.atan2(mx, mz);
-    else if (p.isBot && mag > 0.05) p.yaw = Math.atan2(mx, mz);
+    // humans: yaw = look direction (set from camera / net input). bots: face movement.
+    if (p.isBot && mag > 0.05) p.yaw = Math.atan2(mx, mz);
   }
 
   capture(p) {
@@ -733,7 +734,7 @@ export class Game {
         ctx.strokeStyle = '#fff';
         ctx.beginPath();
         ctx.moveTo(px, pz);
-        ctx.lineTo(px + Math.sin(this.camYaw + Math.PI) * 8, pz + Math.cos(this.camYaw + Math.PI) * 8);
+        ctx.lineTo(px + Math.sin(this.camYaw) * 8, pz + Math.cos(this.camYaw) * 8);
         ctx.stroke();
       }
     }
@@ -750,17 +751,20 @@ export class Game {
     // ----- local input → movement intent -----
     const lp = this.local;
     this.camYaw -= input.lookDX;
-    this.camPitch = clamp(this.camPitch + input.lookDY, -0.15, 1.2);
+    this.camPitch = clamp(this.camPitch + input.lookDY, -0.95, 0.95);
 
     if (!lp.captured && !lp.frozen) {
-      // camera-relative movement
+      // camera-relative movement (first-person):
+      // look dir F = (sin(camYaw), cos(camYaw)); screen-right R = (-cos, sin).
+      // world = R*moveX + F*(-moveZ)  → fixes the previous L/R inversion.
       const sin = Math.sin(this.camYaw), cos = Math.cos(this.camYaw);
-      const wx = input.moveX * cos - input.moveZ * sin;
-      const wz = -input.moveX * sin - input.moveZ * cos;
+      const wx = -input.moveX * cos - input.moveZ * sin;
+      const wz = input.moveX * sin - input.moveZ * cos;
       lp.input.moveX = wx;
       lp.input.moveZ = wz;
       lp.input.dash = input.dash;
-      if (Math.hypot(wx, wz) > 0.05) lp.yaw = Math.atan2(wx, wz);
+      // character faces where the camera looks (FP)
+      lp.yaw = this.camYaw;
       if (input.useItem) {
         if (this.isHost) this.useItem(lp);
         else this.net.send({ t: 'useItem', pid: this.localId });
@@ -803,7 +807,9 @@ export class Game {
     for (const p of this.players) {
       p.model.position.set(p.x, 0, p.z);
       p.model.rotation.y = p.yaw;
-      p.model.visible = !p.captured || dist2(p.x, p.z, this.map.jail.x, this.map.jail.z) < 25;
+      // first-person: hide own body so it never blocks the view
+      if (p === lp) p.model.visible = false;
+      else p.model.visible = !p.captured || dist2(p.x, p.z, this.map.jail.x, this.map.jail.z) < 25;
       const normSpeed = Math.min(1, p.speed / CONFIG.ONI_DASH_SPEED);
       p.anim.speed = lerp(p.anim.speed, normSpeed, Math.min(1, dt * 10));
       p.anim.frozen = p.frozen;
@@ -822,25 +828,31 @@ export class Game {
     if (this._vfx) for (const f of [...this._vfx]) f(dt);
     this.map.update(this.elapsed);
 
-    // ----- camera: third-person follow -----
-    const camDist = 5.2, camH = 2.2;
-    const tx = lp.x - Math.sin(this.camYaw) * camDist * Math.cos(this.camPitch);
-    const tz = lp.z - Math.cos(this.camYaw) * camDist * Math.cos(this.camPitch);
-    const ty = camH + Math.sin(this.camPitch) * camDist;
-    // camera collision: don't go through walls — pull camera closer
-    let cx = tx, cz = tz, cy = ty;
-    const steps = 8;
-    for (let i = steps; i >= 2; i--) {
-      const t = i / steps;
-      const sx2 = lp.x + (tx - lp.x) * t, sz2 = lp.z + (tz - lp.z) * t;
-      const cell = this.map.collide(sx2, sz2, 0.3);
-      if (Math.abs(cell.x - sx2) < 0.01 && Math.abs(cell.z - sz2) < 0.01) {
-        cx = sx2; cz = sz2; cy = camH * (1 - t) + ty * t;
-        break;
-      }
-    }
-    this.camera.position.lerp(new THREE.Vector3(cx, cy, cz), Math.min(1, dt * 14));
-    this.camera.lookAt(lp.x, 1.4, lp.z);
+    // ----- camera: first-person (DbD killer-style immersion) -----
+    const isOniLocal2 = lp.role === ROLES.ONI;
+    const eyeH = isOniLocal2 ? 1.78 : 1.55;
+    // head-bob synced to movement speed
+    const spNorm = Math.min(1, lp.speed / CONFIG.ONI_DASH_SPEED);
+    this._bobT += dt * (5 + spNorm * 9) * (spNorm > 0.03 ? 1 : 0);
+    const bobY = Math.abs(Math.sin(this._bobT)) * 0.055 * spNorm;
+    const bobX = Math.sin(this._bobT * 0.5) * 0.03 * spNorm;
+    const fSin = Math.sin(this.camYaw), fCos = Math.cos(this.camYaw);
+    // strafe-bob applied along screen-right vector (-cos, sin)
+    this.camera.position.set(
+      lp.x + (-fCos) * bobX,
+      eyeH + bobY,
+      lp.z + (fSin) * bobX
+    );
+    const cp = Math.cos(this.camPitch);
+    this.camera.lookAt(
+      lp.x + fSin * cp,
+      eyeH + bobY - Math.sin(this.camPitch),
+      lp.z + fCos * cp
+    );
+    // dash FOV kick for speed sensation
+    const targetFov = 75 + spNorm * (lp.input.dash ? 8 : 4);
+    this.camera.fov = lerp(this.camera.fov, targetFov, Math.min(1, dt * 6));
+    this.camera.updateProjectionMatrix();
 
     this.updateHUD();
     this.renderer.render(this.scene, this.camera);
