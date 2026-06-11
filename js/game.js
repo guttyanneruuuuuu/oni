@@ -81,11 +81,11 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 1.35;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0d1020);
-    this.scene.fog = new THREE.Fog(0x0d1020, 22, 58);
+    this.scene.background = new THREE.Color(0x2c4070);
+    this.scene.fog = new THREE.Fog(0x33476f, 30, 80);
 
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.06, 220);
     this.camYaw = 0;
@@ -93,9 +93,9 @@ export class Game {
     this._bobT = 0;
     this._fovBase = 75;
 
-    const amb = new THREE.AmbientLight(0x445577, 0.65);
+    const amb = new THREE.AmbientLight(0x7788bb, 1.1);
     this.scene.add(amb);
-    const moon = new THREE.DirectionalLight(0x8899ff, 0.95);
+    const moon = new THREE.DirectionalLight(0xaabbff, 1.5);
     moon.position.set(20, 35, 12);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
@@ -104,7 +104,7 @@ export class Game {
     moon.shadow.camera.far = 90;
     moon.shadow.bias = -0.0004;
     this.scene.add(moon);
-    const hemi = new THREE.HemisphereLight(0x334466, 0x1a2210, 0.5);
+    const hemi = new THREE.HemisphereLight(0x6688bb, 0x3a4a28, 0.85);
     this.scene.add(hemi);
 
     this._onResize = () => {
@@ -1422,7 +1422,7 @@ export class Game {
     this.camera.updateProjectionMatrix();
 
     // fog thickens in smoke
-    const targetFogNear = inSmoke ? 2 : 22;
+    const targetFogNear = inSmoke ? 2 : 30;
     this.scene.fog.near = lerp(this.scene.fog.near, targetFogNear, Math.min(1, dt * 4));
 
     // animate FP arms

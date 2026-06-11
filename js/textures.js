@@ -96,7 +96,7 @@ export function stoneTexture() {
 export function groundTexture() {
   const S = 512;
   const [cv, ctx] = makeCanvas(S);
-  ctx.fillStyle = '#27301f';
+  ctx.fillStyle = '#3a4a2e';
   ctx.fillRect(0, 0, S, S);
   // dirt patches
   for (let i = 0; i < 40; i++) {
@@ -107,9 +107,9 @@ export function groundTexture() {
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
   }
-  // grass blades speckle
+  // grass blades speckle (brighter)
   for (let i = 0; i < 4200; i++) {
-    const gr = 60 + Math.random() * 60 | 0;
+    const gr = 85 + Math.random() * 70 | 0;
     ctx.fillStyle = `rgba(${gr * 0.45 | 0},${gr},${gr * 0.34 | 0},${0.18 + Math.random() * 0.25})`;
     const x = Math.random() * S, y = Math.random() * S;
     ctx.fillRect(x, y, 1.4, 2 + Math.random() * 3.5);
@@ -236,23 +236,23 @@ export function denimTexture() {
   return clothTexture([44, 58, 84]);
 }
 
-// ---- Night sky dome ----
+// ---- Night sky dome (brightened: moonlit twilight blue) ----
 export function skyTexture() {
   const S = 512;
   const [cv, ctx] = makeCanvas(S);
   const g = ctx.createLinearGradient(0, 0, 0, S);
-  g.addColorStop(0, '#04060f');
-  g.addColorStop(0.55, '#0a1024');
-  g.addColorStop(0.8, '#141d36');
-  g.addColorStop(1, '#1d2940');
+  g.addColorStop(0, '#1b2c55');
+  g.addColorStop(0.55, '#2c4070');
+  g.addColorStop(0.8, '#3e548c');
+  g.addColorStop(1, '#4d639c');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
-  // clouds (wispy)
+  // clouds (wispy, brighter moonlit)
   for (let i = 0; i < 14; i++) {
     const x = Math.random() * S, y = S * 0.25 + Math.random() * S * 0.45;
     const grad = ctx.createRadialGradient(x, y, 0, x, y, 40 + Math.random() * 70);
-    grad.addColorStop(0, 'rgba(70,84,120,0.13)');
-    grad.addColorStop(1, 'rgba(70,84,120,0)');
+    grad.addColorStop(0, 'rgba(140,158,200,0.18)');
+    grad.addColorStop(1, 'rgba(140,158,200,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, S, S);
   }

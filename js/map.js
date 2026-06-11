@@ -262,7 +262,7 @@ export class GameMap {
     }
     starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
     const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
-      color: 0xcdd8ff, size: 0.55, sizeAttenuation: true, fog: false, transparent: true, opacity: 0.85,
+      color: 0xe8eeff, size: 0.65, sizeAttenuation: true, fog: false, transparent: true, opacity: 0.95,
     }));
     group.add(stars);
     // moon (emissive disc, no fog)
@@ -274,8 +274,8 @@ export class GameMap {
     moonMesh.lookAt(0, 0, 0);
     group.add(moonMesh);
     const moonGlow = new THREE.Mesh(
-      new THREE.CircleGeometry(11, 32),
-      new THREE.MeshBasicMaterial({ color: 0xaab4d8, transparent: true, opacity: 0.22, fog: false })
+      new THREE.CircleGeometry(12, 32),
+      new THREE.MeshBasicMaterial({ color: 0xc8d2f0, transparent: true, opacity: 0.35, fog: false })
     );
     moonGlow.position.copy(moonMesh.position).multiplyScalar(1.002);
     moonGlow.lookAt(0, 0, 0);
@@ -302,11 +302,11 @@ export class GameMap {
     const brickMat = new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 0.92 });
     const stoneMat = new THREE.MeshStandardMaterial({ map: stoneTexture(), roughness: 0.95 });
     const woodMat = new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.85 });
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x2c2228, roughness: 0.9 });
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3c2e20, roughness: 0.95 });
-    const leafMatA = new THREE.MeshStandardMaterial({ color: 0x1d3a22, roughness: 0.95 });
-    const leafMatB = new THREE.MeshStandardMaterial({ color: 0x27482a, roughness: 0.95 });
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x55585f, roughness: 0.98, flatShading: true });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x4a3a44, roughness: 0.9 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4630, roughness: 0.95 });
+    const leafMatA = new THREE.MeshStandardMaterial({ color: 0x2e5a35, roughness: 0.95 });
+    const leafMatB = new THREE.MeshStandardMaterial({ color: 0x3c6a40, roughness: 0.95 });
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x767a85, roughness: 0.98, flatShading: true });
 
     // --- Instanced walls (perimeter & bricks) and crates ---
     let perimCount = 0, brickCount = 0, crateCount = 0, lowCount = 0;
@@ -450,7 +450,7 @@ export class GameMap {
 
     // --- Grass tufts (visual only, cheap crossed planes) ---
     const tuftMat = new THREE.MeshStandardMaterial({
-      color: 0x37502c, roughness: 1, side: THREE.DoubleSide, transparent: true, opacity: 0.9,
+      color: 0x4f7040, roughness: 1, side: THREE.DoubleSide, transparent: true, opacity: 0.9,
     });
     const tuftGeo = new THREE.PlaneGeometry(0.7, 0.5);
     const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, 160);
