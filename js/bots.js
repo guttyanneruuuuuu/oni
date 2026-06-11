@@ -1,6 +1,6 @@
 // ===== AI Bots: A* pathfinding + finite state machine =====
 import { CONFIG, ROLES } from './config.js';
-import { dist2, rand, pick } from './utils.js';
+import { dist2, rand, pick, lerp } from './utils.js';
 
 const BOT_NAMES = ['アカリ', 'ユウタ', 'ミナト', 'サクラ', 'レン', 'ヒナ', 'ソラ', 'カイ'];
 let nameIdx = 0;
@@ -29,15 +29,20 @@ export class Bot {
     this.thinkT -= dt;
     this.repathT -= dt;
     if (this.thinkT <= 0) {
-      this.thinkT = 0.35 + Math.random() * 0.25;
+      this.thinkT = 0.5 + Math.random() * 0.4; // slowed down thinking (from 0.35-0.6 to 0.5-0.9)
       this.think();
     }
 
     // stuck detection
     const moved = dist2(p.x, p.z, this.lastPos.x, this.lastPos.z);
-    if (moved < 0.002 && (Math.abs(p.vx) > 0.1 || Math.abs(p.vz) > 0.1)) {
+    if (moved < 0.005 && (Math.abs(p.vx) > 0.1 || Math.abs(p.vz) > 0.1)) {
       this.stuckT += dt;
-      if (this.stuckT > 0.8) { this.path = null; this.repathT = 0; this.stuckT = 0; }
+      if (this.stuckT > 0.6) { // more aggressive stuck recovery
+        this.path = null; this.repathT = 0; this.stuckT = 0;
+        // small nudge to get unstuck
+        p.x += (Math.random() - 0.5) * 0.5;
+        p.z += (Math.random() - 0.5) * 0.5;
+      }
     } else this.stuckT = 0;
     this.lastPos.x = p.x; this.lastPos.z = p.z;
 
@@ -61,13 +66,16 @@ export class Bot {
       p.vx = dx / d;
       p.vz = dz / d;
       p.yaw = Math.atan2(dx, dz);
-      p.wantDash = d > 2.5 && p.stamina > 5;
+      // Bots dash less often
+      p.wantDash = d > 3.5 && p.stamina > 20 && Math.random() < 0.7;
     }
-    // swing when in lunge reach (lunge adds forward burst, so attack a bit early)
-    if (d < CONFIG.ATTACK_RANGE + 1.2 && p.attackCD <= 0 && p.attackT <= 0) {
-      p.yaw = Math.atan2(dx, dz); // aim the lunge at the target
-      g.tryAttack(p);
-      p._attackPending = true;
+    // swing when in lunge reach (bots now have a reaction delay before swinging)
+    if (d < CONFIG.ATTACK_RANGE + 0.8 && p.attackCD <= 0 && p.attackT <= 0) {
+      if (Math.random() < 0.4) { // 40% chance to swing each check (adds delay/miss chance)
+        p.yaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.2; // slight aim error
+        g.tryAttack(p);
+        p._attackPending = true;
+      }
     }
   }
 
@@ -110,9 +118,9 @@ export class Bot {
       if (this.repathT <= 0) {
         this.path = g.map.findPath(p.x, p.z, best.x, best.z);
         this.pathIdx = 0;
-        this.repathT = 0.35; // repath faster so the chase tracks a moving runner
+        this.repathT = 0.6; // repath slower (from 0.35)
       }
-      p.wantDash = bd > 9;
+      p.wantDash = bd > 12; // only dash if quite far
     } else {
       // patrol: go to random runner last-known or random spot
       this.state = 'patrol';
@@ -217,8 +225,9 @@ export class Bot {
     const d = Math.hypot(dx, dz);
     if (d < 0.6) { this.pathIdx++; return; }
     const sp = 1;
-    p.vx = (dx / d) * sp;
-    p.vz = (dz / d) * sp;
-    p.yaw = Math.atan2(dx, dz);
+    // apply movement with slight smoothing/lag
+    p.vx = lerp(p.vx, (dx / d) * sp, dt * 6);
+    p.vz = lerp(p.vz, (dz / d) * sp, dt * 6);
+    p.yaw = lerp(p.yaw, Math.atan2(dx, dz), dt * 5);
   }
 }

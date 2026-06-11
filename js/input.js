@@ -55,9 +55,10 @@ export class Input {
     });
     window.addEventListener('mouseup', () => {
       if (dragging && this._mouseMoved < 6 && performance.now() - this._mouseDownTime < 300) {
-        // click = attack (oni) / use item (hiders) — game decides via both flags
+        // click = attack (oni) / vault (runners)
+        // Item use should be explicit (Key E) to avoid accidental waste.
         this.attack = true;
-        this.useItem = true;
+        this.vault = true;
       }
       dragging = false;
     });

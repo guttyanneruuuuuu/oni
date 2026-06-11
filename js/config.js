@@ -5,8 +5,8 @@ export const CONFIG = {
   ONI_FREEZE_TIME: 20,    // oni cannot move at start
   RUNNER_SPEED: 5.2,
   RUNNER_DASH_SPEED: 7.4,
-  ONI_SPEED: 5.7,
-  ONI_DASH_SPEED: 7.9,
+  ONI_SPEED: 5.4,
+  ONI_DASH_SPEED: 7.6,
   DASH_STAMINA_MAX: 100,
   DASH_DRAIN: 30,         // per second
   DASH_REGEN: 16,         // per second
@@ -28,13 +28,13 @@ export const CONFIG = {
   SIGNAL_COOLDOWN: 25,
 
   // --- Oni attack (DbD-style lunge) ---
-  ATTACK_RANGE: 2.6,        // lunge reach
-  ATTACK_ARC: 1.0,          // radians half-angle of swing cone
-  ATTACK_COOLDOWN: 1.4,     // seconds between swings
-  ATTACK_LUNGE_SPEED: 11.5, // forward burst during swing
-  ATTACK_LUNGE_TIME: 0.28,  // lunge duration
-  ATTACK_MISS_LAG: 0.9,     // recovery slowdown on whiff
-  ATTACK_HIT_LAG: 1.4,      // recovery after successful hit (gives rescue window feel)
+  ATTACK_RANGE: 2.2,        // lunge reach (reduced from 2.6)
+  ATTACK_ARC: 0.8,          // radians half-angle of swing cone (reduced from 1.0)
+  ATTACK_COOLDOWN: 1.6,     // seconds between swings (increased from 1.4)
+  ATTACK_LUNGE_SPEED: 9.5,  // forward burst during swing (reduced from 11.5)
+  ATTACK_LUNGE_TIME: 0.25,  // lunge duration (reduced from 0.28)
+  ATTACK_MISS_LAG: 1.2,     // recovery slowdown on whiff (increased from 0.9)
+  ATTACK_HIT_LAG: 1.6,      // recovery after successful hit (increased from 1.4)
 
   // --- Terror radius (heartbeat) ---
   TERROR_RADIUS: 18,        // full heartbeat distance

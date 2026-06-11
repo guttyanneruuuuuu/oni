@@ -81,7 +81,7 @@ function startGame(roles) {
     roster,
     net,
     roles,
-    onEnd: (winner) => showResult(winner, roles),
+    onEnd: (winner, stats) => showResult(winner, roles, stats),
   });
   if (!input) input = new Input();
   let last = performance.now();
@@ -96,7 +96,7 @@ function startGame(roles) {
   rafId = requestAnimationFrame(loop);
 }
 
-function showResult(winner, roles) {
+function showResult(winner, roles, stats) {
   cancelAnimationFrame(rafId);
   const myRole = roles[localId];
   const iWon = (winner === 'oni') === (myRole === ROLES.ONI || myRole === ROLES.TRAITOR);
@@ -106,16 +106,21 @@ function showResult(winner, roles) {
   $('result-desc').textContent = winner === 'oni'
     ? '👹 人狼チームが全ての逃げを捕まえた！'
     : '🏃 逃げチームが時間まで生き延びた！';
-  // role reveal
+  // role reveal + stats
   const el = $('result-players');
   el.innerHTML = '';
   roster.forEach(r => {
     const info = ROLE_INFO[roles[r.id]];
+    const s = stats ? stats.find(p => p.id === r.id) : null;
+    const score = s ? s.score : 0;
+    const detail = s ? (roles[r.id] === ROLES.ONI ? `捕獲: ${s.captures}` : `救出: ${s.rescues}${s.escaped ? ' (脱出)' : ''}`) : '';
     const row = document.createElement('div');
     row.className = 'player-row';
     row.innerHTML = `<span class="p-icon">${info.icon}</span>
       <span class="p-name">${escapeHtml(r.name)}</span>
-      <span class="p-tag">${info.name}</span>`;
+      <span class="p-tag">${info.name}</span>
+      <span class="p-score" style="margin-left:auto; color:#ffd166; font-weight:bold;">${score}pts</span>
+      <span class="p-detail" style="font-size:11px; color:#888; margin-left:8px;">${detail}</span>`;
     el.appendChild(row);
   });
   show($('btn-again'), isHost || solo);
