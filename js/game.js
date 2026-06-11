@@ -445,10 +445,16 @@ export class Game {
       if (t.role !== ROLES.RUNNER || t.captured || t.escaped) continue;
       const dx = t.x - p.x, dz = t.z - p.z;
       const d = Math.hypot(dx, dz);
-      if (d > CONFIG.ATTACK_RANGE || d < 0.05) continue;
+      if (d < 0.05) continue;
+
+      // check 1: body contact (very close range, ignore arc)
+      const contact = d < CONFIG.CATCH_RADIUS;
+      // check 2: swing arc (lunge range)
       const dot = (dx / d) * fwdX + (dz / d) * fwdZ;
       const ang = Math.acos(clamp(dot, -1, 1));
-      if (ang <= CONFIG.ATTACK_ARC) {
+      const inArc = (d <= CONFIG.ATTACK_RANGE && ang <= CONFIG.ATTACK_ARC);
+
+      if (contact || inArc) {
         // hit!
         p._attackHit = true;
         p.attackCD = CONFIG.ATTACK_HIT_LAG;
