@@ -29,7 +29,7 @@ export class Bot {
     this.thinkT -= dt;
     this.repathT -= dt;
     if (this.thinkT <= 0) {
-      this.thinkT = 0.5 + Math.random() * 0.4; // slowed down thinking (from 0.35-0.6 to 0.5-0.9)
+      this.thinkT = 0.8 + Math.random() * 0.6; // further slowed down thinking (0.8-1.4s)
       this.think();
     }
 
@@ -62,17 +62,17 @@ export class Bot {
     if (d < 0.01) return;
     // close-range direct pursuit: grid A* waypoints are too coarse for the
     // final approach, so steer straight at the runner when we can see them
-    if (d < 7 && g.map.hasLOS(p.x, p.z, t.x, t.z)) {
+    if (d < 6 && g.map.hasLOS(p.x, p.z, t.x, t.z)) {
       p.vx = dx / d;
       p.vz = dz / d;
-      p.yaw = Math.atan2(dx, dz);
-      // Bots dash less often
-      p.wantDash = d > 3.5 && p.stamina > 20 && Math.random() < 0.7;
+      p.yaw = lerp(p.yaw, Math.atan2(dx, dz), dt * 3); // slower turn speed
+      // Bots dash much less often
+      p.wantDash = d > 4.5 && p.stamina > 40 && Math.random() < 0.3;
     }
-    // swing when in lunge reach (bots now have a reaction delay before swinging)
-    if (d < CONFIG.ATTACK_RANGE + 0.8 && p.attackCD <= 0 && p.attackT <= 0) {
-      if (Math.random() < 0.4) { // 40% chance to swing each check (adds delay/miss chance)
-        p.yaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.2; // slight aim error
+    // swing when in lunge reach (further nerfed bot attack)
+    if (d < CONFIG.ATTACK_RANGE + 0.4 && p.attackCD <= 0 && p.attackT <= 0) {
+      if (Math.random() < 0.2) { // 20% chance to swing (increased delay)
+        p.yaw = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.4; // increased aim error
         g.tryAttack(p);
         p._attackPending = true;
       }
@@ -108,7 +108,8 @@ export class Bot {
       if (t.role === ROLES.ONI) continue;
       if (t.role === ROLES.TRAITOR && !t.revealed) continue; // can't catch traitor anyway
       const d = dist2(p.x, p.z, t.x, t.z);
-      const visible = d < 16 * 16 && g.map.hasLOS(p.x, p.z, t.x, t.z);
+      // reduced vision range for oni bots
+      const visible = d < 12 * 12 && g.map.hasLOS(p.x, p.z, t.x, t.z);
       const known = g.revealT > 0 || visible || (g.signalTarget === t.id && g.signalT > 0);
       if (known && d < bd) { bd = d; best = t; }
     }
@@ -150,37 +151,41 @@ export class Bot {
       return;
     }
 
-    if (oni && dOni < 14 * 14 && g.map.hasLOS(p.x, p.z, oni.x, oni.z)) {
-      // FLEE: move away from oni
+    if (oni && dOni < 18 * 18 && (g.map.hasLOS(p.x, p.z, oni.x, oni.z) || dOni < 8 * 8)) {
+      // FLEE: move away from oni (increased awareness for runner bots)
       this.state = 'flee';
-      p.wantDash = dOni < 10 * 10;
+      p.wantDash = dOni < 12 * 12;
       if (this.repathT <= 0) {
-        // pick a far walkable point roughly opposite oni
         let best = null, bScore = -Infinity;
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 12; i++) {
           const s = g.map.randomWalkable();
-          const score = dist2(s.x, s.z, oni.x, oni.z) - dist2(s.x, s.z, p.x, p.z) * 0.5;
+          const score = dist2(s.x, s.z, oni.x, oni.z) - dist2(s.x, s.z, p.x, p.z) * 0.3;
           if (score > bScore) { bScore = score; best = s; }
         }
         this.path = g.map.findPath(p.x, p.z, best.x, best.z);
-        this.pathIdx = 0; this.repathT = 0.8;
+        this.pathIdx = 0; this.repathT = 0.5;
       }
     } else {
-      // wander toward items or random spots
-      this.state = 'wander';
+      // prefer working on generators
+      this.state = 'objective';
       p.wantDash = false;
       if (!this.path || this.pathIdx >= (this.path?.length || 0)) {
-        // prefer nearby item
-        let target = null, bd = Infinity;
-        for (const it of g.items) {
-          if (!it.alive) continue;
-          if (!it.forRunner) continue;
-          const d = dist2(p.x, p.z, it.x, it.z);
-          if (d < 18 * 18 && d < bd) { bd = d; target = it; }
-        }
-        const spot = target || g.map.randomWalkable();
-        this.path = g.map.findPath(p.x, p.z, spot.x, spot.z);
-        this.pathIdx = 0;
+         let target = null, bd = Infinity;
+         for (const gen of g.map.generators) {
+           if (gen.done) continue;
+           const d = dist2(p.x, p.z, gen.x, gen.z);
+           if (d < bd) { bd = d; target = gen; }
+         }
+         if (!target) {
+            for (const it of g.items) {
+              if (!it.alive || !it.forRunner) continue;
+              const d = dist2(p.x, p.z, it.x, it.z);
+              if (d < 18 * 18 && d < bd) { bd = d; target = it; }
+            }
+         }
+         const spot = target || g.map.randomWalkable();
+         this.path = g.map.findPath(p.x, p.z, spot.x, spot.z);
+         this.pathIdx = 0;
       }
     }
   }

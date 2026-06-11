@@ -535,6 +535,18 @@ export class Game {
         gen.progress = Math.max(0, gen.progress - regress * dt);
         if (sabotaging > 0 && (gen._lastWork === undefined || this.elapsed - gen._lastWork > 0.4)) {
            this.particles.emit({ x: gen.x, z: gen.z, y: 1.2, count: 4, color: 0xff4444, speed: 1.5, life: 0.5, size: 0.2, gravity: 2, spread: 0.4 });
+           
+           // Traitor "Boom" Sabotage: small chance to reveal location to Oni as a "fail"
+           if (this.isHost && Math.random() < CONFIG.SABOTAGE_BOOM_CHANCE * dt) {
+             this.particles.emit({ x: gen.x, z: gen.z, y: 1.5, count: 20, color: 0xffaa00, speed: 5, life: 0.8, size: 0.5, gravity: 1 });
+             this.sfx('Explosion');
+             if (this.net) this.net.broadcast({ t: 'boom', x: gen.x, z: gen.z });
+             const oni = this.getOni();
+             if (oni === this.local) this.showMessage('💥 発電機が爆発した！位置を特定！');
+             // temporary reveal of the generator location for oni
+             this.signalT = 4;
+             this.signalTarget = null; // can use this for generic "noise" pings
+           }
            gen._lastWork = this.elapsed;
         }
       }

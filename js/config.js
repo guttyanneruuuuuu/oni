@@ -3,13 +3,13 @@ export const CONFIG = {
   PLAYERS: 5,
   ROUND_TIME: 300,        // 5 minutes
   ONI_FREEZE_TIME: 20,    // oni cannot move at start
-  RUNNER_SPEED: 5.2,
-  RUNNER_DASH_SPEED: 7.4,
-  ONI_SPEED: 5.25,
-  ONI_DASH_SPEED: 7.45,
-  DASH_STAMINA_MAX: 100,
-  DASH_DRAIN: 30,         // per second
-  DASH_REGEN: 16,         // per second
+  RUNNER_SPEED: 5.3,       // buffed from 5.2
+  RUNNER_DASH_SPEED: 7.6,  // buffed from 7.4
+  ONI_SPEED: 5.1,          // nerfed from 5.25
+  ONI_DASH_SPEED: 7.2,     // nerfed from 7.45
+  DASH_STAMINA_MAX: 120,   // increased for runners
+  DASH_DRAIN: 25,          // less drain
+  DASH_REGEN: 20,          // faster regen
   CATCH_RADIUS: 1.05,     // oni touch distance (body contact)
   RESCUE_RADIUS: 1.8,     // jail rescue distance
   RESCUE_TIME: 1.2,       // seconds touching jail to rescue
@@ -28,21 +28,21 @@ export const CONFIG = {
   SIGNAL_COOLDOWN: 25,
 
   // --- Oni attack (DbD-style lunge) ---
-  ATTACK_RANGE: 2.1,        // lunge reach (reduced from 2.2)
-  ATTACK_ARC: 0.75,         // radians half-angle of swing cone (reduced from 0.8)
-  ATTACK_COOLDOWN: 1.8,     // seconds between swings (increased from 1.6)
-  ATTACK_LUNGE_SPEED: 9.0,  // forward burst during swing (reduced from 9.5)
-  ATTACK_LUNGE_TIME: 0.24,  // lunge duration (reduced from 0.25)
-  ATTACK_MISS_LAG: 1.4,     // recovery slowdown on whiff (increased from 1.2)
-  ATTACK_HIT_LAG: 1.8,      // recovery after successful hit (increased from 1.6)
+  ATTACK_RANGE: 1.9,        // nerfed from 2.1
+  ATTACK_ARC: 0.65,         // nerfed from 0.75
+  ATTACK_COOLDOWN: 2.2,     // nerfed from 1.8
+  ATTACK_LUNGE_SPEED: 8.0,  // nerfed from 9.0
+  ATTACK_LUNGE_TIME: 0.22,  // nerfed from 0.24
+  ATTACK_MISS_LAG: 1.8,     // nerfed from 1.4
+  ATTACK_HIT_LAG: 2.2,      // nerfed from 1.8
 
   // --- Terror radius (heartbeat) ---
   TERROR_RADIUS: 22,        // full heartbeat distance (increased for more warning)
   TERROR_NEAR: 10,          // max intensity distance
 
   // --- Vault (window) mechanic ---
-  VAULT_TIME_RUNNER: 0.55,  // runner vault duration
-  VAULT_TIME_ONI: 1.05,     // oni is slow at vaulting
+  VAULT_TIME_RUNNER: 0.45,  // buffed (faster vault)
+  VAULT_TIME_ONI: 1.3,      // nerfed (slower vault)
   VAULT_RADIUS: 1.25,       // interact distance
   VAULT_COOLDOWN: 0.4,
 
@@ -74,8 +74,9 @@ export const CONFIG = {
   CROUCH_DETECT_FACTOR: 0.35,// better stealth while crouched
 
   // --- Traitor Sabotage ---
-  SABOTAGE_FACTOR: 1.5,     // how fast traitor regresses generators
-  TRAITOR_SIGNAL_DUR: 8,    // signal duration increased from 6
+  SABOTAGE_FACTOR: 2.5,     // buffed: traitor regresses much faster
+  SABOTAGE_BOOM_CHANCE: 0.15,// chance to cause a "loud noise" notification to oni when sabotaging
+  TRAITOR_SIGNAL_DUR: 10,   // signal duration increased to 10s
 
   // --- Misc ---
   CAPTURE_SCORE: 100,
@@ -97,7 +98,7 @@ export const ROLE_INFO = {
   oni:     { name: '人狼（鬼）', icon: '👹', class: 'role-oni',
              desc: '攻撃ボタンで斬りかかれ！全員捕まえたら勝利。' },
   traitor: { name: '裏切り者', icon: '🃏', class: 'role-traitor',
-             desc: '逃げのフリをして人狼を勝たせろ。📡で密告、⚙️を破壊（逆修理）できる。' },
+             desc: '逃げのフリをして人狼を勝たせろ。📡で密告、⚙️を爆破・破壊できる。' },
   runner:  { name: '逃げ', icon: '🏃', class: 'role-runner',
              desc: '時間切れまで生き残れ！窓は🪟で乗り越え。仲間は牢屋で救出。' },
 };
