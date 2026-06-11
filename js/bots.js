@@ -42,6 +42,33 @@ export class Bot {
     this.lastPos.x = p.x; this.lastPos.z = p.z;
 
     this.followPath(dt);
+    this.combat(dt);
+  }
+
+  // --- Oni bot combat: steer directly onto the target at close range and
+  //     actually swing the attack (bots previously never attacked = never caught anyone) ---
+  combat(dt) {
+    const p = this.p, g = this.game;
+    if (p.role !== ROLES.ONI || this.state !== 'chase' || p.frozen) return;
+    const t = g.players.find(q => q.id === this.targetId);
+    if (!t || t.captured || t.escaped) { this.targetId = null; return; }
+    const dx = t.x - p.x, dz = t.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.01) return;
+    // close-range direct pursuit: grid A* waypoints are too coarse for the
+    // final approach, so steer straight at the runner when we can see them
+    if (d < 7 && g.map.hasLOS(p.x, p.z, t.x, t.z)) {
+      p.vx = dx / d;
+      p.vz = dz / d;
+      p.yaw = Math.atan2(dx, dz);
+      p.wantDash = d > 2.5 && p.stamina > 5;
+    }
+    // swing when in lunge reach (lunge adds forward burst, so attack a bit early)
+    if (d < CONFIG.ATTACK_RANGE + 1.2 && p.attackCD <= 0 && p.attackT <= 0) {
+      p.yaw = Math.atan2(dx, dz); // aim the lunge at the target
+      g.tryAttack(p);
+      p._attackPending = true;
+    }
   }
 
   think() {
@@ -83,7 +110,7 @@ export class Bot {
       if (this.repathT <= 0) {
         this.path = g.map.findPath(p.x, p.z, best.x, best.z);
         this.pathIdx = 0;
-        this.repathT = 0.5;
+        this.repathT = 0.35; // repath faster so the chase tracks a moving runner
       }
       p.wantDash = bd > 9;
     } else {
