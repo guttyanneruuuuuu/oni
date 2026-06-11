@@ -5,8 +5,8 @@ export const CONFIG = {
   ONI_FREEZE_TIME: 20,    // oni cannot move at start
   RUNNER_SPEED: 5.2,
   RUNNER_DASH_SPEED: 7.4,
-  ONI_SPEED: 5.4,
-  ONI_DASH_SPEED: 7.6,
+  ONI_SPEED: 5.25,
+  ONI_DASH_SPEED: 7.45,
   DASH_STAMINA_MAX: 100,
   DASH_DRAIN: 30,         // per second
   DASH_REGEN: 16,         // per second
@@ -28,17 +28,17 @@ export const CONFIG = {
   SIGNAL_COOLDOWN: 25,
 
   // --- Oni attack (DbD-style lunge) ---
-  ATTACK_RANGE: 2.2,        // lunge reach (reduced from 2.6)
-  ATTACK_ARC: 0.8,          // radians half-angle of swing cone (reduced from 1.0)
-  ATTACK_COOLDOWN: 1.6,     // seconds between swings (increased from 1.4)
-  ATTACK_LUNGE_SPEED: 9.5,  // forward burst during swing (reduced from 11.5)
-  ATTACK_LUNGE_TIME: 0.25,  // lunge duration (reduced from 0.28)
-  ATTACK_MISS_LAG: 1.2,     // recovery slowdown on whiff (increased from 0.9)
-  ATTACK_HIT_LAG: 1.6,      // recovery after successful hit (increased from 1.4)
+  ATTACK_RANGE: 2.1,        // lunge reach (reduced from 2.2)
+  ATTACK_ARC: 0.75,         // radians half-angle of swing cone (reduced from 0.8)
+  ATTACK_COOLDOWN: 1.8,     // seconds between swings (increased from 1.6)
+  ATTACK_LUNGE_SPEED: 9.0,  // forward burst during swing (reduced from 9.5)
+  ATTACK_LUNGE_TIME: 0.24,  // lunge duration (reduced from 0.25)
+  ATTACK_MISS_LAG: 1.4,     // recovery slowdown on whiff (increased from 1.2)
+  ATTACK_HIT_LAG: 1.8,      // recovery after successful hit (increased from 1.6)
 
   // --- Terror radius (heartbeat) ---
-  TERROR_RADIUS: 18,        // full heartbeat distance
-  TERROR_NEAR: 8,           // max intensity distance
+  TERROR_RADIUS: 22,        // full heartbeat distance (increased for more warning)
+  TERROR_NEAR: 10,          // max intensity distance
 
   // --- Vault (window) mechanic ---
   VAULT_TIME_RUNNER: 0.55,  // runner vault duration
@@ -70,8 +70,12 @@ export const CONFIG = {
   ESCAPE_SCORE: 200,
 
   // --- Stealth (crouch) ---
-  CROUCH_SPEED_FACTOR: 0.45,
-  CROUCH_DETECT_FACTOR: 0.4,// reduces oni minimap reveal range while crouched
+  CROUCH_SPEED_FACTOR: 0.5, // slightly faster crouch for better feel
+  CROUCH_DETECT_FACTOR: 0.35,// better stealth while crouched
+
+  // --- Traitor Sabotage ---
+  SABOTAGE_FACTOR: 1.5,     // how fast traitor regresses generators
+  TRAITOR_SIGNAL_DUR: 8,    // signal duration increased from 6
 
   // --- Misc ---
   CAPTURE_SCORE: 100,
@@ -93,7 +97,7 @@ export const ROLE_INFO = {
   oni:     { name: '人狼（鬼）', icon: '👹', class: 'role-oni',
              desc: '攻撃ボタンで斬りかかれ！全員捕まえたら勝利。' },
   traitor: { name: '裏切り者', icon: '🃏', class: 'role-traitor',
-             desc: '逃げのフリをして人狼を勝たせろ。📡で密告できる。' },
+             desc: '逃げのフリをして人狼を勝たせろ。📡で密告、⚙️を破壊（逆修理）できる。' },
   runner:  { name: '逃げ', icon: '🏃', class: 'role-runner',
              desc: '時間切れまで生き残れ！窓は🪟で乗り越え。仲間は牢屋で救出。' },
 };

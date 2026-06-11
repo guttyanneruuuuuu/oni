@@ -11,7 +11,7 @@ export class Input {
     this.attack = false;                  // edge-triggered
     this.vault = false;                   // edge-triggered
     this.crouch = false;                  // held / toggled
-    this.lookSens = 1.0;                  // user-adjustable sensitivity
+    this.lookSens = 1.2;                  // slightly higher default for better feel
     this.keys = {};
     try { const s = parseFloat(localStorage.getItem('wtag_sens')); if (s > 0) this.lookSens = s; } catch (e) {}
     this.touch = isTouchDevice();
@@ -144,8 +144,9 @@ export class Input {
     canvas.addEventListener('touchmove', (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier !== lookId) continue;
-        this.lookDX += (t.clientX - llx) * 0.0052 * this.lookSens;
-        this.lookDY += (t.clientY - lly) * 0.0038 * this.lookSens;
+        // Increased base touch sensitivity for snappier response
+        this.lookDX += (t.clientX - llx) * 0.006 * this.lookSens;
+        this.lookDY += (t.clientY - lly) * 0.0045 * this.lookSens;
         llx = t.clientX; lly = t.clientY;
       }
       e.preventDefault();

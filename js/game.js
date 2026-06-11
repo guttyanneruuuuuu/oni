@@ -495,20 +495,31 @@ export class Game {
     let done = 0;
     for (const gen of this.map.generators) {
       if (gen.done) { done++; continue; }
-      // who is repairing? runners (not traitor — traitor only sabotages) within radius, not in chase contact
+      // who is repairing? runners within radius.
+      // traitor can sabotages (regress progress faster)
       let workers = 0;
+      let sabotaging = 0;
       for (const t of this.players) {
-        if (t.role !== ROLES.RUNNER || t.captured || t.escaped) continue;
-        if (t.crouch) continue; // can't repair while crouched
+        if (t.captured || t.escaped) continue;
+        if (t.crouch) continue; 
         const inRange = dist2(t.x, t.z, gen.x, gen.z) < CONFIG.GEN_REPAIR_RADIUS ** 2;
         const moving = Math.hypot(t.input.moveX, t.input.moveZ) > 0.15;
-        if (inRange && !moving) { workers++; t.repairing = gen.id; }
-        else if (t.repairing === gen.id) t.repairing = null;
+        if (inRange && !moving) {
+          if (t.role === ROLES.RUNNER) { workers++; t.repairing = gen.id; }
+          else if (t.role === ROLES.TRAITOR) { sabotaging++; t.repairing = gen.id; }
+        } else if (t.repairing === gen.id) t.repairing = null;
       }
+
       if (workers > 0) {
-        gen.progress = Math.min(CONFIG.GEN_REPAIR_TIME, gen.progress + workers * dt);
+        // net progress (repair - sabotage)
+        const netWorkers = Math.max(0, workers - sabotaging * CONFIG.SABOTAGE_FACTOR);
+        gen.progress = Math.min(CONFIG.GEN_REPAIR_TIME, gen.progress + netWorkers * dt);
+        
         if (gen._lastWork === undefined || this.elapsed - gen._lastWork > 0.5) {
           this.particles.emit({ x: gen.x, z: gen.z, y: 1.0, count: 4, color: 0xffdd66, speed: 2, life: 0.4, size: 0.22, gravity: -3, spread: 0.6 });
+          if (sabotaging > 0) {
+            this.particles.emit({ x: gen.x, z: gen.z, y: 1.2, count: 3, color: 0xff4444, speed: 1.5, life: 0.5, size: 0.2, gravity: 2, spread: 0.4 });
+          }
           gen._lastWork = this.elapsed;
         }
         if (gen.progress >= CONFIG.GEN_REPAIR_TIME && !gen.done) {
@@ -519,7 +530,13 @@ export class Game {
           this.sfx('Unfreeze');
         }
       } else if (gen.progress > 0 && !gen.done) {
-        gen.progress = Math.max(0, gen.progress - CONFIG.GEN_REGRESS * dt);
+        // base regression + traitor sabotage
+        const regress = CONFIG.GEN_REGRESS + sabotaging * CONFIG.SABOTAGE_FACTOR * 2;
+        gen.progress = Math.max(0, gen.progress - regress * dt);
+        if (sabotaging > 0 && (gen._lastWork === undefined || this.elapsed - gen._lastWork > 0.4)) {
+           this.particles.emit({ x: gen.x, z: gen.z, y: 1.2, count: 4, color: 0xff4444, speed: 1.5, life: 0.5, size: 0.2, gravity: 2, spread: 0.4 });
+           gen._lastWork = this.elapsed;
+        }
       }
       if (gen.done) done++;
     }
@@ -554,7 +571,7 @@ export class Game {
   traitorSignal(traitor, target) {
     if (this.signalCD > 0) return;
     this.signalCD = CONFIG.SIGNAL_COOLDOWN;
-    this.signalT = 6;
+    this.signalT = CONFIG.TRAITOR_SIGNAL_DUR;
     this.signalTarget = target ? target.id : null;
     if (!target) {
       let bd = Infinity;
@@ -564,7 +581,7 @@ export class Game {
         if (d < bd) { bd = d; this.signalTarget = t.id; }
       }
     }
-    if (this.net && this.isHost) this.net.broadcast({ t: 'signal', target: this.signalTarget, dur: 6 });
+    if (this.net && this.isHost) this.net.broadcast({ t: 'signal', target: this.signalTarget, dur: CONFIG.TRAITOR_SIGNAL_DUR });
     if (traitor === this.local) this.showMessage('📡 人狼に位置を密告した！');
     this.sfx('Signal');
     const oni = this.getOni();
