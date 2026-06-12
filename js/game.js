@@ -16,6 +16,7 @@ import { Bot } from './bots.js';
 import { ParticleSystem, ScreenShake, SpeedLines, pulseVignette } from './vfx.js';
 import * as Audio from './audio.js';
 import { $, show, clamp, lerp, dist2, fmtTime, pick, rand } from './utils.js';
+import { getLoadout, SKINS } from './progression.js';
 
 export class Game {
   constructor(opts) {
@@ -48,6 +49,15 @@ export class Game {
     this._stepT = 0;
     this._chaseLevel = 0;
     this._terror = 0;
+
+    // Local player's selected perks (loadout). Only affects the local player so
+    // it's safe for both solo and P2P (each client applies its own loadout).
+    this.myPerks = (opts.loadout || getLoadout() || []);
+    this.equippedSkin = opts.equippedSkin || null;
+    this.equippedOniSkin = opts.equippedOniSkin || null;
+    // per-match tracked stats for rewards
+    this.matchStats = { captures: 0, rescues: 0, gens: 0, items: 0 };
+    this._footprints = [];   // bloodhound perk trail
 
     this.initScene();
     this.map = new GameMap();
@@ -131,7 +141,15 @@ export class Game {
       const isOni = role === ROLES.ONI;
       const sp = isOni ? spawns[0] : spawns[spawnIdx++];
       const colorIdx = runnerSlot;
-      const bodyColor = RUNNER_COLORS[runnerSlot++ % RUNNER_COLORS.length];
+      let bodyColor = RUNNER_COLORS[runnerSlot++ % RUNNER_COLORS.length];
+      // Apply local player's equipped cosmetic skin color
+      if (r.id === this.localId) {
+        if (isOni && this.equippedOniSkin && SKINS[this.equippedOniSkin]) {
+          // oni model uses its own palette; we tint via skin accent later if needed
+        } else if (!isOni && this.equippedSkin && SKINS[this.equippedSkin]) {
+          bodyColor = SKINS[this.equippedSkin].color;
+        }
+      }
       const model = isOni ? createOniModel() : createRunnerModel(bodyColor);
       model.position.set(sp.x, 0, sp.z);
       this.scene.add(model);
@@ -166,6 +184,12 @@ export class Game {
     this.local = this.players.find(p => p.id === this.localId);
     this.camYaw = this.local.yaw;
 
+    // PERK: scavenger — start with a random role-appropriate item
+    if (this.myPerks.includes('scavenger') && this.local && this.isHider(this.local) && !this.local.item) {
+      const keys = ['boost', 'flash', 'wall', 'smoke', 'drink'];
+      this.local.item = keys[Math.floor(Math.random() * keys.length)];
+    }
+
     // First-person arm rig for the local player
     this.fpArms = createFPArms(this.local.role, this.local.bodyColor);
     this.fpArms.userData.anim = { phase: 0, speed: 0, idleT: 0, attackT: 0, attackDur: 0.4 };
@@ -191,6 +215,9 @@ export class Game {
   getOni() { return this.players.find(p => p.role === ROLES.ONI); }
   aliveRunners() { return this.players.filter(p => p.role === ROLES.RUNNER && !p.captured && !p.escaped); }
   isHider(p) { return p.role === ROLES.RUNNER || p.role === ROLES.TRAITOR; }
+
+  // Perk helper: only the local player benefits from their chosen loadout.
+  perk(p, id) { return p === this.local && this.myPerks.includes(id); }
 
   // ---------- Items ----------
   spawnInitialItems() {
@@ -420,7 +447,7 @@ export class Game {
     if (p.role !== ROLES.ONI || p.frozen || p.captured) return;
     if (p.attackCD > 0 || p.attackT > 0) return;
     p.attackT = CONFIG.ATTACK_LUNGE_TIME + 0.18;       // swing window
-    p.attackCD = CONFIG.ATTACK_COOLDOWN;
+    p.attackCD = CONFIG.ATTACK_COOLDOWN * (this.perk(p, 'brute') ? 0.85 : 1); // PERK: brute
     p.lungeT = CONFIG.ATTACK_LUNGE_TIME;
     p.lungeVX = Math.sin(p.yaw);
     p.lungeVZ = Math.cos(p.yaw);
@@ -441,6 +468,7 @@ export class Game {
     if (p._attackHit) return;
     // hit detection during the active swing portion
     const fwdX = Math.sin(p.yaw), fwdZ = Math.cos(p.yaw);
+    const range = CONFIG.ATTACK_RANGE * (this.perk(p, 'predator') ? 1.12 : 1); // PERK: predator
     for (const t of this.players) {
       if (t.role !== ROLES.RUNNER || t.captured || t.escaped) continue;
       const dx = t.x - p.x, dz = t.z - p.z;
@@ -452,7 +480,7 @@ export class Game {
       // check 2: swing arc (lunge range)
       const dot = (dx / d) * fwdX + (dz / d) * fwdZ;
       const ang = Math.acos(clamp(dot, -1, 1));
-      const inArc = (d <= CONFIG.ATTACK_RANGE && ang <= CONFIG.ATTACK_ARC);
+      const inArc = (d <= range && ang <= CONFIG.ATTACK_ARC);
 
       if (contact || inArc) {
         // hit!
@@ -512,7 +540,11 @@ export class Game {
 
       if (workers > 0) {
         // net progress (repair - sabotage)
-        const netWorkers = Math.max(0, workers - sabotaging * CONFIG.SABOTAGE_FACTOR);
+        let netWorkers = Math.max(0, workers - sabotaging * CONFIG.SABOTAGE_FACTOR);
+        // PERK: lockpick — if the local runner is repairing this gen, +20% speed
+        if (this.perk(this.local, 'lockpick') && this.local.repairing === gen.id && !this.local.captured) {
+          netWorkers *= 1.2;
+        }
         gen.progress = Math.min(CONFIG.GEN_REPAIR_TIME, gen.progress + netWorkers * dt);
         
         if (gen._lastWork === undefined || this.elapsed - gen._lastWork > 0.5) {
@@ -524,6 +556,7 @@ export class Game {
         }
         if (gen.progress >= CONFIG.GEN_REPAIR_TIME && !gen.done) {
           gen.done = true;
+          if (this.local && this.local.repairing === gen.id && !this.local.captured) this.matchStats.gens++;
           this.particles.emit({ x: gen.x, z: gen.z, y: 1.0, count: 30, color: 0x66ff99, speed: 4, life: 0.9, size: 0.4, gravity: 1 });
           if (this.net && this.isHost) this.net.broadcast({ t: 'gendone', id: gen.id });
           this.showAnnounce(`⚙️ 発電機 修理完了！ (${this.countGensDone()}/${CONFIG.GEN_REQUIRED})`, 2.5);
@@ -638,11 +671,14 @@ export class Game {
       if (dist2(p.x, p.z, jail.x, jail.z) < CONFIG.RESCUE_RADIUS ** 2) {
         const jailed = this.players.filter(t => t.captured);
         if (jailed.length) {
+          // PERK: savior — 0.4s faster rescue (local only)
+          const rescueTime = CONFIG.RESCUE_TIME - (this.perk(p, 'savior') ? 0.4 : 0);
           p.rescueT += dt;
-          if (p === this.local) this.showMessage(`🔓 救出中… ${Math.ceil((CONFIG.RESCUE_TIME - p.rescueT) * 10) / 10}s`);
-          if (p.rescueT >= CONFIG.RESCUE_TIME) {
+          if (p === this.local) this.showMessage(`🔓 救出中… ${Math.max(0, Math.ceil((rescueTime - p.rescueT) * 10) / 10)}s`);
+          if (p.rescueT >= rescueTime) {
             p.rescueT = 0;
-            p.score += CONFIG.RESCUE_SCORE; p.rescues++;
+            p.score += CONFIG.RESCUE_SCORE + (this.perk(p, 'savior') ? 40 : 0); p.rescues++;
+            if (p === this.local) this.matchStats.rescues++;
             for (const j of jailed) this.rescue(j);
           }
         }
@@ -694,7 +730,7 @@ export class Game {
           this.removeItem(it);
           this.particles.pickupSparkle(it.x, it.z);
           if (this.net) this.net.broadcast({ t: 'item-', id: it.id, pid: p.id, type: it.type });
-          if (p === this.local) { this.updateItemHUD(); this.showMessage(`${ITEMS[it.type].icon} ${ITEMS[it.type].name} を入手！`); this.sfx('Pickup'); }
+          if (p === this.local) { this.matchStats.items++; this.updateItemHUD(); this.showMessage(`${ITEMS[it.type].icon} ${ITEMS[it.type].name} を入手！`); this.sfx('Pickup'); }
           break;
         }
       }
@@ -763,6 +799,8 @@ export class Game {
     const isOni = p.role === ROLES.ONI;
     let base = isOni ? CONFIG.ONI_SPEED : CONFIG.RUNNER_SPEED;
     let dashSpeed = isOni ? CONFIG.ONI_DASH_SPEED : CONFIG.RUNNER_DASH_SPEED;
+    // PERK: sprinter — +6% dash top speed
+    if (this.perk(p, 'sprinter')) dashSpeed *= 1.06;
 
     let mx, mz, dashing;
     if (p.isBot) {
@@ -800,7 +838,8 @@ export class Game {
     // stamina
     if (dashing && mag > 0.05) p.stamina = Math.max(0, p.stamina - CONFIG.DASH_DRAIN * dt);
     else {
-      const regen = CONFIG.DASH_REGEN * (p.drinkT > 0 ? 2.2 : 1);
+      let regen = CONFIG.DASH_REGEN * (p.drinkT > 0 ? 2.2 : 1);
+      if (this.perk(p, 'ironlungs')) regen *= 1.25; // PERK: iron lungs
       p.stamina = Math.min(CONFIG.DASH_STAMINA_MAX, p.stamina + regen * dt);
     }
     if (p.drinkT > 0) p.drinkT -= dt;
@@ -827,7 +866,7 @@ export class Game {
     p.captured = true;
     p.x = this.map.jail.x + rand(-0.5, 0.5);
     p.z = this.map.jail.z + rand(-0.5, 0.5);
-    if (by) { by.score += CONFIG.CAPTURE_SCORE; by.captures++; }
+    if (by) { by.score += CONFIG.CAPTURE_SCORE; by.captures++; if (by === this.local) this.matchStats.captures++; }
     if (this.net) this.net.broadcast({ t: 'capture', pid: p.id, x: p.x, z: p.z });
     this.onCaptureFX(p);
   }

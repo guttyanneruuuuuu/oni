@@ -23,6 +23,22 @@
 <!-- ============ TITLE SCREEN ============ -->
 <div id="screen-title" class="screen active">
   <div class="title-bg"></div>
+
+  <!-- Profile HUD (live-service top bar) -->
+  <div id="meta-hud">
+    <div class="meta-left">
+      <div class="meta-lvbox">
+        <span id="meta-level">Lv.1</span>
+        <div class="meta-xpbar"><div id="meta-xpfill"></div></div>
+      </div>
+      <span id="meta-streak" class="meta-streak"></span>
+    </div>
+    <div class="meta-right">
+      <span class="meta-cur coin">🪙 <b id="meta-coins">200</b></span>
+      <span class="meta-cur gem">💎 <b id="meta-gems">5</b></span>
+    </div>
+  </div>
+
   <div class="title-content">
     <h1 class="game-title"><span class="t-red">人狼</span><span class="t-white">鬼ごっこ</span></h1>
     <p class="game-subtitle">WEREWOLF TAG 3D</p>
@@ -34,11 +50,76 @@
         <input id="input-room" type="text" maxlength="6" placeholder="ルームコード" autocomplete="off">
         <button id="btn-join" class="btn btn-green">参加</button>
       </div>
-      <button id="btn-howto" class="btn btn-ghost">あそびかた</button>
     </div>
+
+    <!-- Meta navigation -->
+    <div class="meta-nav">
+      <button id="btn-shop" class="meta-btn">🛍️<span>ショップ</span></button>
+      <button id="btn-perks" class="meta-btn">🎯<span>パーク</span></button>
+      <button id="btn-missions" class="meta-btn">📋<span>ミッション</span><span id="mission-badge" class="nav-badge hidden"></span></button>
+      <button id="btn-profile" class="meta-btn">👤<span>プロフィール</span></button>
+      <button id="btn-howto" class="meta-btn">❓<span>あそびかた</span></button>
+    </div>
+
     <p class="title-footer">5人対戦: 👹人狼×1 ・ 🃏裏切り者×1 ・ 🏃逃げ×3</p>
   </div>
+
+  <!-- ===== META PANELS (overlays) ===== -->
+  <!-- SHOP -->
+  <div id="panel-shop" class="meta-panel">
+    <div class="meta-panel-inner">
+      <div class="meta-panel-head">
+        <h2>🛍️ スキンショップ</h2>
+        <button class="btn btn-ghost btn-small" data-close-meta>✕</button>
+      </div>
+      <div class="shop-filters">
+        <button class="filter-tab active" data-shop-filter="all">すべて</button>
+        <button class="filter-tab" data-shop-filter="runner">🏃 逃げ</button>
+        <button class="filter-tab" data-shop-filter="oni">👹 鬼</button>
+      </div>
+      <button id="btn-freebie" class="btn btn-gold freebie-btn">🎁 デイリーボーナスを受け取る</button>
+      <div id="shop-grid" class="shop-grid"></div>
+    </div>
+  </div>
+
+  <!-- PERKS -->
+  <div id="panel-perks" class="meta-panel">
+    <div class="meta-panel-inner">
+      <div class="meta-panel-head">
+        <h2>🎯 パーク（最大2つ装備）</h2>
+        <button class="btn btn-ghost btn-small" data-close-meta>✕</button>
+      </div>
+      <div id="loadout-slots" class="loadout-slots"></div>
+      <div id="perk-grid" class="perk-grid"></div>
+    </div>
+  </div>
+
+  <!-- MISSIONS -->
+  <div id="panel-missions" class="meta-panel">
+    <div class="meta-panel-inner">
+      <div class="meta-panel-head">
+        <h2>📋 デイリーミッション</h2>
+        <button class="btn btn-ghost btn-small" data-close-meta>✕</button>
+      </div>
+      <div id="mission-list" class="mission-list"></div>
+      <h3 class="ach-head">🏅 実績</h3>
+      <div id="achievement-list" class="achievement-list"></div>
+    </div>
+  </div>
+
+  <!-- PROFILE -->
+  <div id="panel-profile" class="meta-panel">
+    <div class="meta-panel-inner">
+      <div class="meta-panel-head">
+        <h2>👤 プロフィール</h2>
+        <button class="btn btn-ghost btn-small" data-close-meta>✕</button>
+      </div>
+      <div id="profile-stats"></div>
+    </div>
+  </div>
 </div>
+
+<div id="toast-host"></div>
 
 <!-- ============ HOW TO PLAY ============ -->
 <div id="screen-howto" class="screen">
@@ -145,6 +226,7 @@
   <div class="panel">
     <h2 id="result-title">勝利！</h2>
     <p id="result-desc"></p>
+    <div id="result-rewards" class="result-rewards"></div>
     <div id="result-players" class="lobby-players"></div>
     <div class="lobby-actions">
       <button id="btn-again" class="btn btn-big btn-red">もう一度</button>
