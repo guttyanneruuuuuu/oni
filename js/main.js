@@ -5,6 +5,8 @@ import { NetHost, NetClient } from './network.js';
 import { CONFIG, ROLES, ROLE_INFO } from './config.js';
 import { $, show, switchScreen, isTouchDevice, pick } from './utils.js';
 import { botName } from './bots.js';
+import * as Prog from './progression.js';
+import { initMeta, refreshMetaHUD } from './meta.js';
 
 let input = null;
 let game = null;
@@ -75,12 +77,16 @@ function startGame(roles) {
   lastRoles = roles;
   switchScreen('game');
   if (game) { game.dispose(); game = null; }
+  const saveState = Prog.getState();
   game = new Game({
     isHost,
     localId,
     roster,
     net,
     roles,
+    loadout: Prog.getLoadout(),
+    equippedSkin: saveState.equippedSkin,
+    equippedOniSkin: saveState.equippedOniSkin,
     onEnd: (winner, stats) => showResult(winner, roles, stats),
   });
   if (!input) input = new Input();
@@ -106,6 +112,24 @@ function showResult(winner, roles, stats) {
   $('result-desc').textContent = winner === 'oni'
     ? '👹 人狼チームが全ての逃げを捕まえた！'
     : '🏃 逃げチームが時間まで生き延びた！';
+
+  // ---- record match + reward animation ----
+  const mine = stats ? stats.find(p => p.id === localId) : null;
+  const ms = (game && game.matchStats) ? game.matchStats : { captures: 0, rescues: 0, gens: 0, items: 0 };
+  const survived = iWon && (myRole === ROLES.RUNNER) && !(mine && mine.escaped);
+  const reward = Prog.recordMatch({
+    won: iWon,
+    role: myRole,
+    captures: ms.captures,
+    rescues: ms.rescues,
+    gens: ms.gens,
+    items: ms.items,
+    escaped: !!(mine && mine.escaped),
+    survived,
+    score: mine ? mine.score : 0,
+  });
+  renderRewards(reward);
+
   // role reveal + stats
   const el = $('result-players');
   el.innerHTML = '';
@@ -126,6 +150,40 @@ function showResult(winner, roles, stats) {
   show($('btn-again'), isHost || solo);
   switchScreen('result');
   if (game) { game.dispose(); game = null; }
+  refreshMetaHUD();
+}
+
+// ----- Reward animation on the result screen -----
+function renderRewards(reward) {
+  const box = $('result-rewards');
+  if (!box) return;
+  const s = Prog.getState();
+  const needXp = Prog.xpForLevel(s.level);
+  const pct = Math.min(100, Math.round((s.xp / needXp) * 100));
+  let extra = '';
+  if (reward.level && reward.level.leveledUp) {
+    extra += `<div class="reward-levelup">🎉 レベルアップ！ <b>Lv.${reward.level.level}</b></div>`;
+  }
+  if (reward.newAch && reward.newAch.length) {
+    extra += reward.newAch.map(a => `<div class="reward-ach">🏅 実績解除「${a.name}」 +${a.reward}🪙</div>`).join('');
+  }
+  if (reward.missionUpdates && reward.missionUpdates.length) {
+    extra += reward.missionUpdates.map(m => `<div class="reward-mission">✅ ミッション達成「${m.desc}」</div>`).join('');
+  }
+  box.innerHTML = `
+    <div class="reward-row">
+      <span class="reward-pill xp">+${reward.xpGain} XP</span>
+      <span class="reward-pill coin">+${reward.coinGain} 🪙</span>
+    </div>
+    <div class="reward-xpbar"><div class="reward-xpfill" style="width:0%"></div>
+      <span class="reward-xplabel">Lv.${s.level} — ${s.xp}/${needXp} XP</span>
+    </div>
+    <div class="reward-extra">${extra}</div>`;
+  // animate the bar fill
+  requestAnimationFrame(() => {
+    const fill = box.querySelector('.reward-xpfill');
+    if (fill) { fill.style.transition = 'width 0.9s cubic-bezier(.2,.9,.3,1)'; fill.style.width = pct + '%'; }
+  });
 }
 
 function backToTitle() {
@@ -253,6 +311,7 @@ function joinRoom(code) {
 
 // ---------- UI wiring ----------
 loadName();
+initMeta();
 
 $('btn-solo').addEventListener('click', startSolo);
 $('btn-create').addEventListener('click', createRoom);
