@@ -76,7 +76,12 @@ export const CONFIG = {
   // --- Traitor Sabotage ---
   SABOTAGE_FACTOR: 2.5,     // buffed: traitor regresses much faster
   SABOTAGE_BOOM_CHANCE: 0.15,// chance to cause a "loud noise" notification to oni when sabotaging
-  TRAITOR_SIGNAL_DUR: 10,   // signal duration increased to 10s
+    TRAITOR_SIGNAL_DUR: 10,   // signal duration increased to 10s
+
+  // --- Traitor Items ---
+  CLOAK_TIME: 6,
+  TRIPWIRE_RADIUS: 1.5,
+  SABOTAGE_AMOUNT: 0.25,    // 25% instant regression
 
   // --- Misc ---
   CAPTURE_SCORE: 100,
@@ -123,13 +128,21 @@ export const ITEMS = {
               desc: '踏んだ逃げを激減速' },
   haste:    { name: '狂奔', icon: '🔥', for: ['oni'], color: 0xff3300,
               desc: '3秒間 移動速度が大幅UP' },
+  cloak:    { name: '光学迷彩', icon: '👻', for: ['traitor'], color: 0xaa44ff,
+              desc: '6秒間 完全に姿を消す' },
+  wire:     { name: '感知線', icon: '🕸️', for: ['traitor'], color: 0xff44aa,
+              desc: '逃げが触れると人狼に通知' },
+  sabotage: { name: '超サボタージュ', icon: '🧨', for: ['traitor'], color: 0xff0000,
+              desc: '発電機を即座に25%後退させる' },
 };
 export const RUNNER_ITEM_KEYS = ['boost', 'flash', 'wall', 'smoke', 'decoy', 'drink'];
 export const ONI_ITEM_KEYS = ['detector', 'trap', 'haste'];
+export const TRAITOR_ITEM_KEYS = ['cloak', 'wire', 'sabotage', 'smoke', 'decoy'];
 
-// item drop weights (runner items)
+// item drop weights
 export const RUNNER_ITEM_WEIGHTS = { boost: 3, flash: 3, wall: 2.5, smoke: 2, decoy: 1.6, drink: 2 };
 export const ONI_ITEM_WEIGHTS = { detector: 3, trap: 3, haste: 2.2 };
+export const TRAITOR_ITEM_WEIGHTS = { cloak: 3, wire: 3, sabotage: 2.5, smoke: 2, decoy: 2 };
 
 export function weightedPick(weights, rng = Math.random) {
   let total = 0;

@@ -168,6 +168,30 @@ export const PERKS = {
     desc: '密告時にスモーク展開。逃げの視界を一時的に奪う',
     effect: { reportSmoke: { duration: 3, range: 8 } }
   },
+  'double_agent': {
+    name: 'ダブルエージェント',
+    icon: '👥',
+    role: 'traitor',
+    tier: 1,
+    desc: '発電機の修理中に、修理しているふりをして進行度をより早く減少させる',
+    effect: { pretendRepair: 1.5 }
+  },
+  'master_of_disguise': {
+    name: '変装の達人',
+    icon: '🎭',
+    role: 'traitor',
+    tier: 2,
+    desc: '光学迷彩の持続時間+2秒。終了時に3秒間移動速度+10%',
+    effect: { cloakBoost: 2, postCloakSpeed: 1.1 }
+  },
+  'wiretap_pro': {
+    name: '盗聴のプロ',
+    icon: '📡',
+    role: 'traitor',
+    tier: 3,
+    desc: '感知線が反応した際、その逃げの輪郭を10秒間表示する',
+    effect: { wireRevealDur: 10 }
+  },
 };
 
 export class PerkSystem {
