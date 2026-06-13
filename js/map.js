@@ -185,6 +185,12 @@ export class GameMap {
     }
     // escape gate location (north perimeter mid)
     this.gate = { x: 0, z: -WORLD_H / 2 + 1.2, open: false };
+
+    // ritual anchors (phase-2 objective after generators)
+    this.anchors = [
+      { id: 'anchor0', x: -11, z: -2, progress: 0, done: false, active: false },
+      { id: 'anchor1', x: 11, z: 2, progress: 0, done: false, active: false },
+    ];
   }
 
   isBlocked(cx, cz) {
@@ -662,7 +668,53 @@ export class GameMap {
       gen._group = gg;
     });
 
-    // --- Escape gate (north): heavy doors that slide open when all gens done ---
+    // --- Ritual anchors: phase-2 objective that purifies the gate lock ---
+    this.anchors.forEach((a, idx) => {
+      const ag = new THREE.Group();
+      ag.position.set(a.x, 0, a.z);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(1.0, 0.12, 12, 36),
+        new THREE.MeshStandardMaterial({ color: 0x556677, emissive: 0x112233, roughness: 0.5, metalness: 0.4 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.1;
+      ag.add(ring);
+
+      const core = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.45),
+        new THREE.MeshStandardMaterial({ color: 0x778899, emissive: 0x223344, emissiveIntensity: 1.2, roughness: 0.25, metalness: 0.2 })
+      );
+      core.position.y = 1.1;
+      ag.add(core);
+
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.45, 2.8, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      beam.position.y = 1.4;
+      ag.add(beam);
+
+      const pl = new THREE.PointLight(0x55bbff, 0.8, 7, 2);
+      pl.position.y = 1.4;
+      ag.add(pl);
+
+      const label = new THREE.Mesh(
+        new THREE.RingGeometry(1.22, 1.4, 28),
+        new THREE.MeshBasicMaterial({ color: idx === 0 ? 0x55ccff : 0xff88cc, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+      );
+      label.rotation.x = -Math.PI / 2;
+      label.position.y = 0.04;
+      ag.add(label);
+
+      a._group = ag;
+      a._ring = ring;
+      a._core = core;
+      a._beam = beam;
+      a._pl = pl;
+      group.add(ag);
+    });
+
+    // --- Escape gate (north): heavy doors that slide open when all objectives done ---
     const gateGroup = new THREE.Group();
     gateGroup.position.set(this.gate.x, 0, this.gate.z);
     const gateMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.8, metalness: 0.3 });
@@ -747,6 +799,36 @@ export class GameMap {
         }
         if (gen._pistons && gen.progress > 0 && !gen.done) {
           gen._pistons.forEach((pis, i) => { pis.position.y = 1.25 + Math.sin(t * 9 + i * Math.PI) * 0.08; });
+        }
+      }
+    }
+
+    // ritual anchors visuals
+    if (this.anchors) {
+      for (const a of this.anchors) {
+        if (!a._group) continue;
+        const frac = Math.max(0, Math.min(1, a.progress || 0));
+        const activePulse = a.active ? (0.7 + Math.sin(t * 5 + a.x) * 0.3) : 0.35;
+        if (a._core) {
+          a._core.rotation.y += 0.01;
+          a._core.position.y = 1.05 + Math.sin(t * 2 + a.z) * 0.1;
+          const m = a._core.material;
+          const done = !!a.done;
+          m.color.setHex(done ? 0x7affb5 : a.active ? 0x6ad6ff : 0x778899);
+          m.emissive.setHex(done ? 0x3aff8a : a.active ? 0x1e6aa0 : 0x223344);
+          m.emissiveIntensity = done ? 2.2 : 0.8 + frac * 1.4;
+        }
+        if (a._ring) {
+          const rm = a._ring.material;
+          rm.color.setHex(a.done ? 0x66ffaa : a.active ? 0x66ccff : 0x556677);
+          rm.emissive.setHex(a.done ? 0x2aff77 : a.active ? 0x114466 : 0x111b2a);
+        }
+        if (a._beam) {
+          a._beam.material.opacity = (a.done ? 0.45 : a.active ? 0.25 : 0.05) * activePulse;
+        }
+        if (a._pl) {
+          a._pl.intensity = (a.done ? 2.8 : 0.7 + frac * 1.2) * activePulse;
+          a._pl.color.setHex(a.done ? 0x66ffaa : 0x55bbff);
         }
       }
     }

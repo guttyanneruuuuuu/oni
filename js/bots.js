@@ -166,40 +166,72 @@ export class Bot {
         this.pathIdx = 0; this.repathT = 0.5;
       }
     } else {
-      // prefer working on generators
       this.state = 'objective';
       p.wantDash = false;
       if (!this.path || this.pathIdx >= (this.path?.length || 0)) {
-         let target = null, bd = Infinity;
-         for (const gen of g.map.generators) {
-           if (gen.done) continue;
-           const d = dist2(p.x, p.z, gen.x, gen.z);
-           if (d < bd) { bd = d; target = gen; }
-         }
-         if (!target) {
-            for (const it of g.items) {
-              if (!it.alive || !it.forRunner) continue;
-              const d = dist2(p.x, p.z, it.x, it.z);
-              if (d < 18 * 18 && d < bd) { bd = d; target = it; }
-            }
-         }
-         const spot = target || g.map.randomWalkable();
-         this.path = g.map.findPath(p.x, p.z, spot.x, spot.z);
-         this.pathIdx = 0;
+        let target = null, bd = Infinity;
+
+        // phase 2 objective: ritual anchors first
+        if (g.gatePowered && !g.map.gate.open && g.map.anchors) {
+          for (const a of g.map.anchors) {
+            if (!a.active || a.done) continue;
+            const d = dist2(p.x, p.z, a.x, a.z);
+            if (d < bd) { bd = d; target = a; }
+          }
+        }
+
+        // phase 1 objective: generators
+        if (!target) {
+          for (const gen of g.map.generators) {
+            if (gen.done) continue;
+            const d = dist2(p.x, p.z, gen.x, gen.z);
+            if (d < bd) { bd = d; target = gen; }
+          }
+        }
+
+        if (!target) {
+          for (const it of g.items) {
+            if (!it.alive || !it.forRunner) continue;
+            const d = dist2(p.x, p.z, it.x, it.z);
+            if (d < 18 * 18 && d < bd) { bd = d; target = it; }
+          }
+        }
+
+        const spot = target || g.map.randomWalkable();
+        this.path = g.map.findPath(p.x, p.z, spot.x, spot.z);
+        this.pathIdx = 0;
       }
     }
   }
 
   thinkTraitor() {
     const g = this.game, p = this.p;
-    // Acts like a runner but: occasionally signals nearest runner's position to oni
-    this.thinkRunnerLite();
-    if (g.signalCD <= 0 && Math.random() < 0.25) {
+
+    // If phase 2 started, traitor prioritizes corrupting ritual anchors
+    if (g.gatePowered && !g.map.gate.open && g.map.anchors?.length) {
+      let target = null, bd = Infinity;
+      for (const a of g.map.anchors) {
+        if (a.done || !a.active) continue;
+        const d = dist2(p.x, p.z, a.x, a.z);
+        if (d < bd) { bd = d; target = a; }
+      }
+      if (target && (!this.path || this.pathIdx >= (this.path?.length || 0) || Math.random() < 0.2)) {
+        this.path = g.map.findPath(p.x, p.z, target.x, target.z);
+        this.pathIdx = 0;
+      }
+      p.wantDash = false;
+    } else {
+      // Acts like a runner while shadowing victims
+      this.thinkRunnerLite();
+    }
+
+    // signal often, and automatically convert full betrayal gauge into blood contract
+    if (g.signalCD <= 0 && Math.random() < 0.3) {
       let best = null, bd = Infinity;
       for (const t of g.players) {
         if (t.role !== ROLES.RUNNER || t.captured) continue;
         const d = dist2(p.x, p.z, t.x, t.z);
-        if (d < 20 * 20 && d < bd) { bd = d; best = t; }
+        if (d < 24 * 24 && d < bd) { bd = d; best = t; }
       }
       if (best) g.traitorSignal(p, best);
     }
