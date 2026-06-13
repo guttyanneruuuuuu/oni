@@ -95,6 +95,17 @@ export class Bot {
         if (oni && dist2(p.x, p.z, oni.x, oni.z) < 64) {
           if (Math.random() < 0.5) g.useItem(p);
         }
+      } else if (p.role === ROLES.TRAITOR) {
+        if (p.item === 'cloak' && Math.random() < 0.1) g.useItem(p);
+        if (p.item === 'wire' && Math.random() < 0.2) g.useItem(p);
+        if (p.item === 'sabotage') {
+          for (const gen of g.map.generators) {
+            if (!gen.done && dist2(p.x, p.z, gen.x, gen.z) < 5 * 5) {
+              g.useItem(p); break;
+            }
+          }
+        }
+        if ((p.item === 'smoke' || p.item === 'decoy') && Math.random() < 0.1) g.useItem(p);
       }
     }
   }

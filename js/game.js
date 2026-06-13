@@ -33,6 +33,7 @@ export class Game {
     this.signalT = 0; this.signalTarget = null; this.signalCD = 0;
     this.items = [];
     this.traps = [];
+    this.tripwires = [];
     this.tempWalls = [];
     this.smokes = [];
     this.decoys = [];
@@ -231,10 +232,11 @@ export class Game {
   spawnItem(typeOverride) {
     let type = typeOverride;
     if (!type) {
-      // 70% runner items, 30% oni items, weighted within each group
-      type = (Math.random() < 0.70)
-        ? weightedPick(RUNNER_ITEM_WEIGHTS)
-        : weightedPick(ONI_ITEM_WEIGHTS);
+      // Split pool based on roles present: 50% Runner, 25% Traitor, 25% Oni
+      const r = Math.random();
+      if (r < 0.50) type = weightedPick(RUNNER_ITEM_WEIGHTS);
+      else if (r < 0.75) type = weightedPick(TRAITOR_ITEM_WEIGHTS);
+      else type = weightedPick(ONI_ITEM_WEIGHTS);
     }
     const pos = this.map.randomWalkable();
     if (dist2(pos.x, pos.z, this.map.jail.x, this.map.jail.z) < 16) return this.spawnItem(typeOverride);
@@ -375,6 +377,50 @@ export class Game {
         this.shake.add(0.25);
         this.announce(p, '🔥 狂奔！');
         break;
+      case 'cloak':
+        let cloakDur = CONFIG.CLOAK_TIME;
+        if (this.perk(p, 'master_of_disguise')) cloakDur += 2;
+        p.cloakT = cloakDur;
+        this.particles.emit({ x: p.x, z: p.z, y: 1.0, count: 12, color: 0xaa44ff, speed: 1.2, life: 0.8, size: 0.3, gravity: 0 });
+        this.sfx('Smoke'); // reuse smoke sound for now
+        this.announce(p, '👻 光学迷彩起動！');
+        break;
+      case 'wire': {
+        const wire = { x: p.x, z: p.z, alive: true, mesh: null };
+        const mesh = new THREE.Mesh(
+          new THREE.TorusGeometry(0.5, 0.02, 4, 24),
+          new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending })
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(p.x, 0.05, p.z);
+        this.scene.add(mesh);
+        wire.mesh = mesh;
+        this.tripwires.push(wire);
+        this.sfx('TrapPlace');
+        this.announce(p, '🕸️ 感知線を設置！');
+        break;
+      }
+      case 'sabotage': {
+        // find nearest gen
+        let best = null, bd = Infinity;
+        for (const g of this.map.generators) {
+          if (g.done) continue;
+          const d = dist2(p.x, p.z, g.x, g.z);
+          if (d < bd) { bd = d; best = g; }
+        }
+        if (best && bd < 5 * 5) {
+          best.progress = Math.max(0, best.progress - CONFIG.GEN_REPAIR_TIME * CONFIG.SABOTAGE_AMOUNT);
+          this.particles.emit({ x: best.x, z: best.z, y: 1.5, count: 25, color: 0xff0000, speed: 6, life: 1.0, size: 0.6, gravity: 1.5 });
+          this.sfx('Explosion');
+          this.announce(p, '🧨 超サボタージュ成功！');
+          if (this.net) this.net.broadcast({ t: 'boom', x: best.x, z: best.z });
+        } else {
+          // if no gen nearby, refund item or show fail
+          this.showMessage('❌ 近くに発電機がありません');
+          p.item = 'sabotage'; 
+        }
+        break;
+      }
     }
   }
 
@@ -542,11 +588,17 @@ export class Game {
 
       if (workers > 0) {
         let sabotageFactor = CONFIG.SABOTAGE_FACTOR;
+        // PERK: double_agent — traitor sabotages 50% faster while pretending to repair
         for (const t of this.players) {
-          if (t.role === ROLES.TRAITOR && t.repairing === gen.id && this.perk(t, 'double_agent')) sabotageFactor *= 1.5;
+          if (t.role === ROLES.TRAITOR && t.repairing === gen.id && this.perk(t, "double_agent")) {
+            sabotageFactor *= 1.5;
+          }
         }
         let netWorkers = Math.max(0, workers - sabotaging * sabotageFactor);
-        if (this.perk(this.local, 'lockpick') && this.local.repairing === gen.id && !this.local.captured) netWorkers *= 1.2;
+        // PERK: lockpick — if the local runner is repairing this gen, +20% speed
+        if (this.perk(this.local, "lockpick") && this.local.repairing === gen.id && !this.local.captured) {
+          netWorkers *= 1.2;
+        }
         gen.progress = Math.min(CONFIG.GEN_REPAIR_TIME, gen.progress + netWorkers * dt);
 
         if (sabotaging > 0) {
@@ -754,6 +806,7 @@ export class Game {
 
     this.updateItems(dt);
     this.updateTraps(dt);
+    this.updateTripwires(dt);
     this.updateTempWalls(dt);
     this.updateGenerators(dt);
 
@@ -819,7 +872,8 @@ export class Game {
       for (const p of this.players) {
         if (p.captured || p.item || p.escaped) continue;
         const roleKey = p.role === ROLES.TRAITOR ? 'traitor' : p.role;
-        if (!ITEMS[it.type].for.includes(roleKey)) continue;
+        const itemDef = ITEMS[it.type];
+        if (!itemDef || !itemDef.for.includes(roleKey)) continue;
         if (dist2(p.x, p.z, it.x, it.z) < CONFIG.ITEM_PICK_RADIUS ** 2) {
           p.item = it.type;
           this.removeItem(it);
@@ -850,6 +904,33 @@ export class Game {
           this.particles.trapSnap(tr.x, tr.z);
           if (this.net) this.net.broadcast({ t: 'trap!', x: tr.x, z: tr.z, pid: p.id, dur: CONFIG.TRAP_SLOW_TIME });
           if (p === this.local) { this.showMessage('🪤 トラップにかかった！'); this.sfx('TrapSnap'); pulseVignette('rgba(255,120,0,0.3)', 400); }
+        }
+      }
+    }
+  }
+
+  updateTripwires(dt) {
+    for (const tr of this.tripwires) {
+      if (!tr.alive) continue;
+      for (const p of this.players) {
+        if (p.role !== ROLES.RUNNER || p.captured || p.escaped) continue;
+        if (dist2(p.x, p.z, tr.x, tr.z) < CONFIG.TRIPWIRE_RADIUS ** 2) {
+          tr.alive = false;
+          if (tr.mesh) { this.scene.remove(tr.mesh); tr.mesh = null; }
+          this.particles.emit({ x: tr.x, z: tr.z, y: 0.5, count: 10, color: 0xff44aa, speed: 2, life: 0.5, size: 0.2, gravity: 1 });
+          this.sfx('Signal');
+          const oni = this.getOni();
+          let revealDur = 5;
+          // PERK: wiretap_pro — reveal duration increased to 10s
+          for (const t of this.players) {
+            if (t.role === ROLES.TRAITOR && this.perk(t, 'wiretap_pro')) {
+              revealDur = 10; break;
+            }
+          }
+          if (oni === this.local) this.showMessage(`🕸️ 感知線が反応！ ${p.name} の位置を特定！`);
+          this.signalT = revealDur;
+          this.signalTarget = p.id;
+          if (this.net) this.net.broadcast({ t: 'signal', target: p.id, dur: revealDur });
         }
       }
     }
@@ -1127,7 +1208,10 @@ export class Game {
       case 'signal':
         this.signalT = msg.dur; this.signalTarget = msg.target;
         this.sfx('Signal');
-        if (this.local.role === ROLES.ONI) this.showMessage('📡 裏切り者からシグナル受信！');
+        if (this.local.role === ROLES.ONI) {
+          if (msg.target) this.showMessage('📡 裏切り者からシグナル受信！');
+          else this.showMessage('📡 どこかで反応があったようだ…');
+        }
         break;
       case 'contract':
         this.contractT = Math.max(this.contractT, msg.dur || CONFIG.TRAITOR_CONTRACT_TIME);
@@ -1196,6 +1280,12 @@ export class Game {
         this.scene.add(mesh);
         this.tempWalls.push({ x: msg.x, z: msg.z, rotY: msg.rotY, t: CONFIG.WALL_TIME, mesh });
         this.sfx('WallPlace');
+        break;
+      }
+      case 'boom': {
+        this.particles.emit({ x: msg.x, z: msg.z, y: 1.5, count: 25, color: 0xff0000, speed: 6, life: 1.0, size: 0.6, gravity: 1.5 });
+        this.sfx('Explosion');
+        if (this.local.role === ROLES.ONI) this.showMessage('💥 発電機が爆発した！');
         break;
       }
       case 'capture': {
@@ -1382,9 +1472,11 @@ export class Game {
     ctx.fillStyle = '#ffd166';
     for (const it of this.items) {
       if (!it.alive) continue;
-      if (!ITEMS[it.type].for.includes(myRoleKey)) continue;
-      const [ix, iz] = toMap(it.x, it.z);
-      ctx.fillRect(ix - 1.5, iz - 1.5, 3, 3);
+      const itemDef = ITEMS[it.type];
+      if (itemDef && itemDef.for.includes(myRoleKey)) {
+        const [ix, iz] = toMap(it.x, it.z);
+        ctx.fillRect(ix - 1.5, iz - 1.5, 3, 3);
+      }
     }
     // players
     for (const p of this.players) {

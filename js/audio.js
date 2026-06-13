@@ -276,6 +276,12 @@ export function sfxUnfreeze() {
   [880, 1100, 1320].forEach((f, i) => osc('triangle', f, t + i * 0.05, 0.2, 0.1));
   osc('sawtooth', 60, t, 0.5, 0.25);
 }
+export function sfxExplosion() {
+  const c = ac(), t = c.currentTime;
+  noise(t, 0.6, 0.5, 400, 'lowpass');
+  osc('sine', 60, t, 0.5, 0.6);
+  osc('sawtooth', 40, t, 0.4, 0.3);
+}
 
 // ---------- win / lose ----------
 export function sfxWin() {
