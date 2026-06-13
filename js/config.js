@@ -60,23 +60,36 @@ export const CONFIG = {
   ENDGAME_TIME: 45,         // final N seconds: oni sees all runners pulse on minimap
   ENDGAME_PING_INTERVAL: 6, // seconds between endgame pings
 
-  // --- Escape task (generators + gate) ---
+  // --- Escape task chain (Phase 1: generators -> Phase 2: ritual anchors -> gate) ---
   GEN_COUNT: 5,
-  GEN_REQUIRED: 3,          // repair this many to open the escape gate
+  GEN_REQUIRED: 3,          // repair this many to power the gate ritual
   GEN_REPAIR_RADIUS: 1.6,   // distance to repair
   GEN_REPAIR_TIME: 14,      // seconds of solo repair to finish one gen
   GEN_REGRESS: 4,           // progress lost per second when nobody works it (after partial)
+  ANCHOR_COUNT: 2,
+  ANCHOR_RADIUS: 1.9,
+  ANCHOR_CHARGE_TIME: 16,   // seconds of solo channeling to purify one anchor
+  ANCHOR_DECAY: 3.2,        // progress lost per second while untouched
+  ANCHOR_SABOTAGE_FACTOR: 1.8,
   GATE_RADIUS: 2.2,         // distance to escape through gate
   ESCAPE_SCORE: 200,
+  ANCHOR_SCORE: 90,
 
   // --- Stealth (crouch) ---
   CROUCH_SPEED_FACTOR: 0.5, // slightly faster crouch for better feel
   CROUCH_DETECT_FACTOR: 0.35,// better stealth while crouched
 
-  // --- Traitor Sabotage ---
-  SABOTAGE_FACTOR: 2.5,     // buffed: traitor regresses much faster
-  SABOTAGE_BOOM_CHANCE: 0.15,// chance to cause a "loud noise" notification to oni when sabotaging
-    TRAITOR_SIGNAL_DUR: 10,   // signal duration increased to 10s
+  // --- Traitor Sabotage / Betrayal economy ---
+  SABOTAGE_FACTOR: 2.5,      // traitor regresses generators faster
+  SABOTAGE_BOOM_CHANCE: 0.15,// chance to cause a loud-noise ping while sabotaging
+  TRAITOR_SIGNAL_DUR: 10,
+  TRAITOR_BETRAYAL_MAX: 100,
+  BETRAYAL_SIGNAL_GAIN: 24,
+  BETRAYAL_SABOTAGE_PER_SEC: 13,
+  TRAITOR_CONTRACT_COST: 100,
+  TRAITOR_CONTRACT_TIME: 12,
+  CONTRACT_ONI_SPEED_FACTOR: 1.12,
+  CONTRACT_RESCUE_SLOW: 1.5,
 
   // --- Traitor Items ---
   CLOAK_TIME: 6,
@@ -103,9 +116,9 @@ export const ROLE_INFO = {
   oni:     { name: '人狼（鬼）', icon: '👹', class: 'role-oni',
              desc: '攻撃ボタンで斬りかかれ！全員捕まえたら勝利。' },
   traitor: { name: '裏切り者', icon: '🃏', class: 'role-traitor',
-             desc: '逃げのフリをして人狼を勝たせろ。📡で密告、⚙️を爆破・破壊できる。' },
+             desc: '密告/妨害で「裏契約ゲージ」を溜め、満タンで血契約を発動して鬼を強化。' },
   runner:  { name: '逃げ', icon: '🏃', class: 'role-runner',
-             desc: '時間切れまで生き残れ！窓は🪟で乗り越え。仲間は牢屋で救出。' },
+             desc: '発電機→儀式アンカーの2段階任務を完了し、脱出ゲートを解放せよ。' },
 };
 
 // Items: who can pick them up & what they do

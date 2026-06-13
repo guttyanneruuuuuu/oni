@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import {
   CONFIG, ROLES, ROLE_INFO, ITEMS, RUNNER_ITEM_KEYS, ONI_ITEM_KEYS,
-  RUNNER_ITEM_WEIGHTS, ONI_ITEM_WEIGHTS, weightedPick,
+  RUNNER_ITEM_WEIGHTS, ONI_ITEM_WEIGHTS, TRAITOR_ITEM_WEIGHTS, weightedPick,
 } from './config.js';
 import { GameMap, WORLD_W, WORLD_H } from './map.js';
 import {
@@ -44,6 +44,9 @@ export class Game {
     this._vfx = [];
     this.gensDone = 0;
     this.gateOpenAmt = 0;
+    this.gatePowered = false;
+    this.objectivePhase = 1;
+    this.contractT = 0;
     this.escaped = [];           // ids that escaped through gate
     this._endgame = false;
     this._endgamePingT = 0;
@@ -177,6 +180,7 @@ export class Game {
         model, anim: { speed: 0, phase: Math.random() * 6 },
         input: { moveX: 0, moveZ: 0, dash: false, crouch: false },
         rescueT: 0,
+        betrayal: 0,
         nameTag: tag,
       };
       this.players.push(p);
@@ -564,18 +568,16 @@ export class Game {
     return true;
   }
 
-  // ---------- Generators / escape ----------
+  // ---------- Generators / ritual anchors / escape ----------
   updateGenerators(dt) {
     let done = 0;
     for (const gen of this.map.generators) {
       if (gen.done) { done++; continue; }
-      // who is repairing? runners within radius.
-      // traitor can sabotages (regress progress faster)
       let workers = 0;
       let sabotaging = 0;
       for (const t of this.players) {
         if (t.captured || t.escaped) continue;
-        if (t.crouch) continue; 
+        if (t.crouch) continue;
         const inRange = dist2(t.x, t.z, gen.x, gen.z) < CONFIG.GEN_REPAIR_RADIUS ** 2;
         const moving = Math.hypot(t.input.moveX, t.input.moveZ) > 0.15;
         if (inRange && !moving) {
@@ -585,26 +587,27 @@ export class Game {
       }
 
       if (workers > 0) {
-        // net progress (repair - sabotage)
         let sabotageFactor = CONFIG.SABOTAGE_FACTOR;
         // PERK: double_agent — traitor sabotages 50% faster while pretending to repair
         for (const t of this.players) {
-          if (t.role === ROLES.TRAITOR && t.repairing === gen.id && this.perk(t, 'double_agent')) {
+          if (t.role === ROLES.TRAITOR && t.repairing === gen.id && this.perk(t, "double_agent")) {
             sabotageFactor *= 1.5;
           }
         }
         let netWorkers = Math.max(0, workers - sabotaging * sabotageFactor);
         // PERK: lockpick — if the local runner is repairing this gen, +20% speed
-        if (this.perk(this.local, 'lockpick') && this.local.repairing === gen.id && !this.local.captured) {
+        if (this.perk(this.local, "lockpick") && this.local.repairing === gen.id && !this.local.captured) {
           netWorkers *= 1.2;
         }
         gen.progress = Math.min(CONFIG.GEN_REPAIR_TIME, gen.progress + netWorkers * dt);
-        
+
+        if (sabotaging > 0) {
+          for (const t of this.players) if (t.role === ROLES.TRAITOR && t.repairing === gen.id) this.addBetrayal(t, CONFIG.BETRAYAL_SABOTAGE_PER_SEC * dt * 0.6);
+        }
+
         if (gen._lastWork === undefined || this.elapsed - gen._lastWork > 0.5) {
           this.particles.emit({ x: gen.x, z: gen.z, y: 1.0, count: 4, color: 0xffdd66, speed: 2, life: 0.4, size: 0.22, gravity: -3, spread: 0.6 });
-          if (sabotaging > 0) {
-            this.particles.emit({ x: gen.x, z: gen.z, y: 1.2, count: 3, color: 0xff4444, speed: 1.5, life: 0.5, size: 0.2, gravity: 2, spread: 0.4 });
-          }
+          if (sabotaging > 0) this.particles.emit({ x: gen.x, z: gen.z, y: 1.2, count: 3, color: 0xff4444, speed: 1.5, life: 0.5, size: 0.2, gravity: 2, spread: 0.4 });
           gen._lastWork = this.elapsed;
         }
         if (gen.progress >= CONFIG.GEN_REPAIR_TIME && !gen.done) {
@@ -616,37 +619,46 @@ export class Game {
           this.sfx('Unfreeze');
         }
       } else if (gen.progress > 0 && !gen.done) {
-        // base regression + traitor sabotage
         const regress = CONFIG.GEN_REGRESS + sabotaging * CONFIG.SABOTAGE_FACTOR * 2;
         gen.progress = Math.max(0, gen.progress - regress * dt);
+        if (sabotaging > 0) {
+          for (const t of this.players) if (t.role === ROLES.TRAITOR && t.repairing === gen.id) this.addBetrayal(t, CONFIG.BETRAYAL_SABOTAGE_PER_SEC * dt);
+        }
         if (sabotaging > 0 && (gen._lastWork === undefined || this.elapsed - gen._lastWork > 0.4)) {
-           this.particles.emit({ x: gen.x, z: gen.z, y: 1.2, count: 4, color: 0xff4444, speed: 1.5, life: 0.5, size: 0.2, gravity: 2, spread: 0.4 });
-           
-           // Traitor "Boom" Sabotage: small chance to reveal location to Oni as a "fail"
-           if (this.isHost && Math.random() < CONFIG.SABOTAGE_BOOM_CHANCE * dt) {
-             this.particles.emit({ x: gen.x, z: gen.z, y: 1.5, count: 20, color: 0xffaa00, speed: 5, life: 0.8, size: 0.5, gravity: 1 });
-             this.sfx('Explosion');
-             if (this.net) this.net.broadcast({ t: 'boom', x: gen.x, z: gen.z });
-             const oni = this.getOni();
-             if (oni === this.local) this.showMessage('💥 発電機が爆発した！位置を特定！');
-             // temporary reveal of the generator location for oni
-             this.signalT = 4;
-             this.signalTarget = null; // can use this for generic "noise" pings
-           }
-           gen._lastWork = this.elapsed;
+          this.particles.emit({ x: gen.x, z: gen.z, y: 1.2, count: 4, color: 0xff4444, speed: 1.5, life: 0.5, size: 0.2, gravity: 2, spread: 0.4 });
+          if (this.isHost && Math.random() < CONFIG.SABOTAGE_BOOM_CHANCE * dt) {
+            this.particles.emit({ x: gen.x, z: gen.z, y: 1.5, count: 20, color: 0xffaa00, speed: 5, life: 0.8, size: 0.5, gravity: 1 });
+            this.sfx('Explosion');
+            if (this.net) this.net.broadcast({ t: 'boom', x: gen.x, z: gen.z });
+            const oni = this.getOni();
+            if (oni === this.local) this.showMessage('💥 発電機が爆発した！位置を特定！');
+            this.signalT = 4;
+            this.signalTarget = null;
+          }
+          gen._lastWork = this.elapsed;
         }
       }
       if (gen.done) done++;
     }
+
     this.gensDone = done;
-    // open gate when enough generators done
-    const need = CONFIG.GEN_REQUIRED;
-    const want = Math.min(1, done >= need ? 1 : 0);
-    this.gateOpenAmt = lerp(this.gateOpenAmt, want, Math.min(1, dt * 1.5));
-    this.map.gate.open = done >= need;
+    if (!this.gatePowered && done >= CONFIG.GEN_REQUIRED) {
+      this.gatePowered = true;
+      this.objectivePhase = 2;
+      for (const a of this.map.anchors) a.active = true;
+      this.showAnnounce('🜂 ゲート封印が発動！儀式アンカーを2基浄化せよ', 3.4);
+      this.sfx('Detector');
+    }
+
+    if (this.gatePowered) this.updateAnchors(dt);
+
+    const anchorsDone = this.countAnchorsDone();
+    const gateShouldOpen = this.gatePowered && anchorsDone >= CONFIG.ANCHOR_COUNT;
+    const want = gateShouldOpen ? 1 : 0;
+    this.gateOpenAmt = lerp(this.gateOpenAmt, want, Math.min(1, dt * 1.8));
+    this.map.gate.open = gateShouldOpen;
     this.map.setGateOpen(this.gateOpenAmt);
 
-    // escape through gate
     if (this.map.gate.open) {
       for (const t of this.players) {
         if (t.role !== ROLES.RUNNER || t.captured || t.escaped) continue;
@@ -664,9 +676,86 @@ export class Game {
   }
 
   countGensDone() { return this.map.generators.filter(g => g.done).length; }
+  countAnchorsDone() { return (this.map.anchors || []).filter(a => a.done).length; }
+
+  updateAnchors(dt) {
+    for (const anchor of this.map.anchors || []) {
+      if (!anchor.active || anchor.done) continue;
+      let workers = 0;
+      let corruptors = 0;
+      let nearestRunner = null;
+      let nearestRunnerD = Infinity;
+      for (const p of this.players) {
+        if (p.captured || p.escaped) continue;
+        const inRange = dist2(p.x, p.z, anchor.x, anchor.z) < CONFIG.ANCHOR_RADIUS ** 2;
+        const moving = Math.hypot(p.input.moveX, p.input.moveZ) > 0.15;
+        if (!inRange || moving || p.crouch) continue;
+        if (p.role === ROLES.RUNNER) {
+          workers++;
+          const d = dist2(p.x, p.z, anchor.x, anchor.z);
+          if (d < nearestRunnerD) { nearestRunnerD = d; nearestRunner = p; }
+        } else if (p.role === ROLES.TRAITOR || p.role === ROLES.ONI) {
+          corruptors++;
+          if (p.role === ROLES.TRAITOR) this.addBetrayal(p, CONFIG.BETRAYAL_SABOTAGE_PER_SEC * dt * 0.8);
+        }
+      }
+
+      let delta = 0;
+      if (workers > 0) delta += workers;
+      if (corruptors > 0) delta -= corruptors * CONFIG.ANCHOR_SABOTAGE_FACTOR;
+      if (delta > 0) {
+        anchor.progress = Math.min(CONFIG.ANCHOR_CHARGE_TIME, anchor.progress + delta * dt);
+        if (!anchor._lastFx || this.elapsed - anchor._lastFx > 0.45) {
+          this.particles.emit({ x: anchor.x, z: anchor.z, y: 1.2, count: 5, color: 0x66d9ff, speed: 1.8, life: 0.45, size: 0.2, gravity: -1.2 });
+          anchor._lastFx = this.elapsed;
+        }
+      } else if (delta < 0) {
+        anchor.progress = Math.max(0, anchor.progress + delta * dt);
+        if (!anchor._lastFx || this.elapsed - anchor._lastFx > 0.45) {
+          this.particles.emit({ x: anchor.x, z: anchor.z, y: 1.2, count: 5, color: 0xff5588, speed: 1.7, life: 0.45, size: 0.2, gravity: 1.4 });
+          anchor._lastFx = this.elapsed;
+        }
+      } else if (anchor.progress > 0) {
+        anchor.progress = Math.max(0, anchor.progress - CONFIG.ANCHOR_DECAY * dt);
+      }
+
+      if (anchor.progress >= CONFIG.ANCHOR_CHARGE_TIME && !anchor.done) {
+        anchor.done = true;
+        anchor.progress = CONFIG.ANCHOR_CHARGE_TIME;
+        this.showAnnounce(`🜂 儀式アンカー浄化！ (${this.countAnchorsDone()}/${CONFIG.ANCHOR_COUNT})`, 2.8);
+        this.sfx('Unfreeze');
+        this.particles.emit({ x: anchor.x, z: anchor.z, y: 1.3, count: 35, color: 0x88ffcc, speed: 3.6, life: 0.9, size: 0.32, gravity: 0.5 });
+        if (nearestRunner) nearestRunner.score += CONFIG.ANCHOR_SCORE;
+      }
+    }
+  }
+
+  addBetrayal(traitor, amount) {
+    if (!traitor || traitor.role !== ROLES.TRAITOR) return;
+    traitor.betrayal = clamp((traitor.betrayal || 0) + amount, 0, CONFIG.TRAITOR_BETRAYAL_MAX);
+  }
+
+  triggerTraitorContract(traitor) {
+    if (!traitor || traitor.role !== ROLES.TRAITOR) return false;
+    if ((traitor.betrayal || 0) < CONFIG.TRAITOR_CONTRACT_COST) return false;
+    traitor.betrayal = Math.max(0, traitor.betrayal - CONFIG.TRAITOR_CONTRACT_COST);
+    this.contractT = Math.max(this.contractT, CONFIG.TRAITOR_CONTRACT_TIME);
+    this.revealT = Math.max(this.revealT, CONFIG.TRAITOR_CONTRACT_TIME);
+    this.signalT = Math.max(this.signalT, CONFIG.TRAITOR_CONTRACT_TIME);
+    this.signalTarget = null;
+    this.showAnnounce('🩸 裏切り者の血契約！鬼が強化された！', 3.2);
+    this.sfx('Explosion');
+    if (this.net && this.isHost) this.net.broadcast({ t: 'contract', dur: CONFIG.TRAITOR_CONTRACT_TIME });
+    return true;
+  }
 
   // ---------- Traitor signal ----------
   traitorSignal(traitor, target) {
+    if (traitor && this.triggerTraitorContract(traitor)) {
+      if (traitor === this.local) this.showMessage('🩸 血契約を発動！鬼の追跡力が上昇');
+      return;
+    }
+
     if (this.signalCD > 0) return;
     this.signalCD = CONFIG.SIGNAL_COOLDOWN;
     this.signalT = CONFIG.TRAITOR_SIGNAL_DUR;
@@ -679,6 +768,7 @@ export class Game {
         if (d < bd) { bd = d; this.signalTarget = t.id; }
       }
     }
+    this.addBetrayal(traitor, CONFIG.BETRAYAL_SIGNAL_GAIN);
     if (this.net && this.isHost) this.net.broadcast({ t: 'signal', target: this.signalTarget, dur: CONFIG.TRAITOR_SIGNAL_DUR });
     if (traitor === this.local) this.showMessage('📡 人狼に位置を密告した！');
     this.sfx('Signal');
@@ -704,6 +794,8 @@ export class Game {
     this.revealT = Math.max(0, this.revealT - dt);
     this.signalT = Math.max(0, this.signalT - dt);
     this.signalCD = Math.max(0, this.signalCD - dt);
+    this.contractT = Math.max(0, this.contractT - dt);
+    if (this.contractT > 0) this.revealT = Math.max(this.revealT, 0.6);
 
     for (const b of this.bots) b.update(dt);
     for (const p of this.players) this.movePlayer(p, dt);
@@ -726,7 +818,8 @@ export class Game {
         const jailed = this.players.filter(t => t.captured);
         if (jailed.length) {
           // PERK: savior — 0.4s faster rescue (local only)
-          const rescueTime = CONFIG.RESCUE_TIME - (this.perk(p, 'savior') ? 0.4 : 0);
+          const rescueBase = CONFIG.RESCUE_TIME - (this.perk(p, 'savior') ? 0.4 : 0);
+          const rescueTime = this.contractT > 0 ? rescueBase * CONFIG.CONTRACT_RESCUE_SLOW : rescueBase;
           p.rescueT += dt;
           if (p === this.local) this.showMessage(`🔓 救出中… ${Math.max(0, Math.ceil((rescueTime - p.rescueT) * 10) / 10)}s`);
           if (p.rescueT >= rescueTime) {
@@ -759,7 +852,8 @@ export class Game {
       if (this.escaped.length > 0) this.endGame('runner');
       else this.endGame('oni');
     } else if (this.time <= 0) {
-      this.endGame('runner');
+      // Runners must complete objectives and escape; simply stalling no longer wins.
+      this.endGame(this.escaped.length > 0 ? 'runner' : 'oni');
     }
 
     // network state broadcast (10Hz)
@@ -903,8 +997,9 @@ export class Game {
     if (p.slowT > 0) { speed *= CONFIG.TRAP_SLOW_FACTOR; p.slowT -= dt; }
     if (p.boostT > 0) { speed *= CONFIG.BOOST_FACTOR; p.boostT -= dt; }
     if (p.hasteT > 0) { speed *= CONFIG.ONI_HASTE_FACTOR; p.hasteT -= dt; }
-    if (p.cloakT > 0) { 
-      p.cloakT -= dt; 
+    if (isOni && this.contractT > 0) speed *= CONFIG.CONTRACT_ONI_SPEED_FACTOR;
+    if (p.cloakT > 0) {
+      p.cloakT -= dt;
       if (p.cloakT <= 0) {
         p.model.visible = true;
         if (this.perk(p, 'master_of_disguise')) p.boostT = 3; // speed boost after cloak
@@ -1007,12 +1102,18 @@ export class Game {
       t: 's',
       time: this.time,
       freeze: this.freezeT,
+      phase: this.objectivePhase,
+      contract: +this.contractT.toFixed(2),
+      gatePowered: this.gatePowered ? 1 : 0,
+      gateOpen: this.map.gate.open ? 1 : 0,
+      anchor: (this.map.anchors || []).map(a => ({ p: +a.progress.toFixed(1), d: a.done ? 1 : 0, a: a.active ? 1 : 0 })),
       gens: this.map.generators.map(g => +g.progress.toFixed(1)),
       gd: this.map.generators.map(g => g.done ? 1 : 0),
       ps: this.players.map(p => ({
         id: p.id, x: +p.x.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(2),
         sp: +(Math.min(1, p.speed / CONFIG.ONI_DASH_SPEED)).toFixed(2),
         cap: p.captured ? 1 : 0, esc: p.escaped ? 1 : 0, item: p.item || '',
+        bt: p.role === ROLES.TRAITOR ? +(p.betrayal || 0).toFixed(1) : 0,
         cr: p.crouch ? 1 : 0, at: p.attackT > 0 ? 1 : 0, vt: p.vaultT > 0 ? 1 : 0,
       })),
     };
@@ -1021,7 +1122,21 @@ export class Game {
   applyState(s) {
     this.time = s.time;
     this.freezeT = s.freeze;
+    this.objectivePhase = s.phase || 1;
+    this.contractT = s.contract || 0;
+    this.gatePowered = !!s.gatePowered;
+    if (s.anchor && this.map.anchors) {
+      s.anchor.forEach((a, i) => {
+        if (!this.map.anchors[i]) return;
+        this.map.anchors[i].progress = a.p || 0;
+        this.map.anchors[i].done = !!a.d;
+        this.map.anchors[i].active = !!a.a;
+      });
+    }
     if (s.gens) s.gens.forEach((v, i) => { if (this.map.generators[i]) { this.map.generators[i].progress = v; this.map.generators[i].done = !!s.gd[i]; } });
+    this.map.gate.open = !!s.gateOpen;
+    this.gateOpenAmt = this.map.gate.open ? 1 : 0;
+    this.map.setGateOpen(this.gateOpenAmt);
     this.gensDone = this.countGensDone();
     for (const ps of s.ps) {
       const p = this.players.find(q => q.id === ps.id);
@@ -1035,12 +1150,14 @@ export class Game {
         if (ps.cap) { p.x = ps.x; p.z = ps.z; }
         p.escaped = !!ps.esc;
         p.item = ps.item || null;
+        if (p.role === ROLES.TRAITOR) p.betrayal = ps.bt || p.betrayal || 0;
         this.updateItemHUD();
       } else {
         p.netX = ps.x; p.netZ = ps.z; p.netYaw = ps.yaw;
         p.netSpeed = ps.sp;
         p.captured = !!ps.cap;
         p.escaped = !!ps.esc;
+        if (p.role === ROLES.TRAITOR) p.betrayal = ps.bt || p.betrayal || 0;
         p.crouch = !!ps.cr;
         if (ps.at && !p._wasAttacking) { p.anim.attackT = 0.42; p.anim.attackDur = 0.42; }
         p._wasAttacking = !!ps.at;
@@ -1095,6 +1212,12 @@ export class Game {
           if (msg.target) this.showMessage('📡 裏切り者からシグナル受信！');
           else this.showMessage('📡 どこかで反応があったようだ…');
         }
+        break;
+      case 'contract':
+        this.contractT = Math.max(this.contractT, msg.dur || CONFIG.TRAITOR_CONTRACT_TIME);
+        this.revealT = Math.max(this.revealT, this.contractT);
+        this.showAnnounce('🩸 血契約発動！鬼が強化された', 2.6);
+        this.sfx('Explosion');
         break;
       case 'attack': {
         const p = this.players.find(q => q.id === msg.pid);
@@ -1259,12 +1382,21 @@ export class Game {
     const alive = this.aliveRunners().length;
     const total = this.players.filter(p => p.role === ROLES.RUNNER).length;
     $('hud-runners').textContent = `🏃 ${alive}/${total}`;
-    // objective: generators
+    // objective: multi-phase tasks
     const genEl = $('hud-objective');
     if (genEl) {
       const done = this.countGensDone();
-      genEl.textContent = this.map.gate.open ? '🚪 脱出ゲート開放！' : `⚙️ ${done}/${CONFIG.GEN_REQUIRED}`;
+      const anchorsDone = this.countAnchorsDone();
+      if (this.map.gate.open) genEl.textContent = '🚪 脱出ゲート開放！';
+      else if (!this.gatePowered) genEl.textContent = `⚙️ 発電機 ${done}/${CONFIG.GEN_REQUIRED}`;
+      else genEl.textContent = `🜂 儀式アンカー ${anchorsDone}/${CONFIG.ANCHOR_COUNT}`;
       genEl.classList.toggle('gate-open', this.map.gate.open);
+    }
+
+    const roleEl = $('hud-role');
+    if (roleEl && this.local.role === ROLES.TRAITOR) {
+      const pct = Math.floor((this.local.betrayal || 0) / CONFIG.TRAITOR_BETRAYAL_MAX * 100);
+      roleEl.textContent = `🃏 裏切り者  契約:${pct}%`;
     }
     // stamina bar
     const sb = $('stamina-fill');
@@ -1314,8 +1446,22 @@ export class Game {
     // gate
     if (this.map.gate) {
       const [gx, gz] = toMap(this.map.gate.x, this.map.gate.z);
-      ctx.fillStyle = this.map.gate.open ? '#66ffaa' : '#557';
+      ctx.fillStyle = this.map.gate.open ? '#66ffaa' : (this.gatePowered ? '#88b' : '#557');
       ctx.fillRect(gx - 4, gz - 2, 8, 4);
+    }
+
+    // ritual anchors
+    for (const a of this.map.anchors || []) {
+      const [ax, az] = toMap(a.x, a.z);
+      ctx.fillStyle = a.done ? '#66ffaa' : a.active ? '#66ccff' : '#445566';
+      ctx.beginPath(); ctx.arc(ax, az, 3.5, 0, Math.PI * 2); ctx.fill();
+      if (!a.done && a.progress > 0) {
+        ctx.strokeStyle = '#66ccff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(ax, az, 5.5, -Math.PI / 2, -Math.PI / 2 + (a.progress / CONFIG.ANCHOR_CHARGE_TIME) * Math.PI * 2);
+        ctx.stroke();
+      }
     }
     // jail
     const [jx, jz] = toMap(this.map.jail.x, this.map.jail.z);
@@ -1493,7 +1639,17 @@ export class Game {
     const nearVault = canAct ? this.map.nearestVault(lp.x, lp.z, CONFIG.VAULT_RADIUS) : null;
     for (const v of this.map.vaults) v._near = nearVault && nearVault.vault === v;
     const nearGen = canAct && this.isHider(lp) ? this.map.nearestGenerator(lp.x, lp.z, CONFIG.GEN_REPAIR_RADIUS) : null;
-    this.updatePrompts(nearVault, nearGen);
+    let nearAnchor = null;
+    if (canAct && this.isHider(lp) && this.gatePowered && !this.map.gate.open && this.map.anchors) {
+      let best = null, bd = CONFIG.ANCHOR_RADIUS ** 2;
+      for (const a of this.map.anchors) {
+        if (a.done || !a.active) continue;
+        const d = dist2(lp.x, lp.z, a.x, a.z);
+        if (d < bd) { bd = d; best = a; }
+      }
+      if (best) nearAnchor = { anchor: best, d: Math.sqrt(bd) };
+    }
+    this.updatePrompts(nearVault, nearGen, nearAnchor);
 
     // VFX + map
     this.particles.update(dt);
@@ -1515,12 +1671,18 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
-  updatePrompts(nearVault, nearGen) {
+  updatePrompts(nearVault, nearGen, nearAnchor) {
     const vp = $('vault-prompt');
     if (vp) show(vp, !!nearVault && !this.local.captured);
     const gp = $('gen-prompt');
     if (gp) {
-      if (nearGen && !nearGen.gen.done) {
+      if (nearAnchor && !nearAnchor.anchor.done) {
+        show(gp, true);
+        const pct = Math.floor(nearAnchor.anchor.progress / CONFIG.ANCHOR_CHARGE_TIME * 100);
+        gp.textContent = this.local.role === ROLES.TRAITOR
+          ? `🩸 儀式妨害中… ${pct}%（静止で腐敗）`
+          : `🜂 儀式浄化中… ${pct}%（静止でチャージ）`;
+      } else if (nearGen && !nearGen.gen.done && !this.gatePowered) {
         show(gp, true);
         const pct = Math.floor(nearGen.gen.progress / CONFIG.GEN_REPAIR_TIME * 100);
         gp.textContent = `⚙️ 修理中… ${pct}%（止まって修理）`;
@@ -1550,6 +1712,7 @@ export class Game {
       }
     }
     if (this._endgame) terror = Math.max(terror, 0.3);
+    if (this.contractT > 0) chase = Math.max(chase, 0.45);
     this._terror = lerp(this._terror, terror, Math.min(1, dt * 4));
     this._chaseLevel = lerp(this._chaseLevel, chase, Math.min(1, dt * 3));
     try { Audio.setHeartbeat(this._terror); Audio.setChaseLevel(this._chaseLevel); } catch (e) {}
